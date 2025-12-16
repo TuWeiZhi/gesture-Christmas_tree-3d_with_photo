@@ -157,6 +157,99 @@
             padding: 2px 5px;
             pointer-events: none;
         }
+
+        /* 移动端优化 */
+        @media (max-width: 768px) {
+            /* 标题缩小 */
+            h1 {
+                font-size: 28px;
+                letter-spacing: 3px;
+                margin: 0;
+            }
+
+            /* UI层顶部内边距减小 */
+            #ui-layer {
+                padding-top: 15px;
+            }
+
+            /* 控制按钮组优化 */
+            .controls-wrapper {
+                top: 50px;
+                right: 10px;
+                gap: 6px;
+            }
+
+            .btn-group {
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .upload-btn {
+                padding: 6px 12px;
+                font-size: 8px;
+                letter-spacing: 1px;
+                min-width: 90px;
+            }
+
+            .hint-text {
+                font-size: 7px;
+                letter-spacing: 0.5px;
+            }
+
+            /* 摄像头区域大幅缩小 */
+            #webcam-wrapper {
+                bottom: 10px;
+                left: 10px;
+                width: 120px;
+                height: 90px;
+                border-width: 0.5px;
+            }
+
+            #debug-info {
+                font-size: 7px;
+                padding: 1px 3px;
+                bottom: 2px;
+                left: 2px;
+            }
+        }
+
+        /* 超小屏幕进一步优化 */
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 22px;
+                letter-spacing: 2px;
+            }
+
+            #ui-layer {
+                padding-top: 10px;
+            }
+
+            .controls-wrapper {
+                top: 40px;
+                right: 8px;
+            }
+
+            .upload-btn {
+                padding: 5px 10px;
+                font-size: 7px;
+                min-width: 80px;
+            }
+
+            .hint-text {
+                font-size: 6px;
+            }
+
+            #webcam-wrapper {
+                width: 100px;
+                height: 75px;
+                bottom: 8px;
+                left: 8px;
+            }
+
+            #debug-info {
+                font-size: 6px;
+            }
+        }
     </style>
     
     <style>

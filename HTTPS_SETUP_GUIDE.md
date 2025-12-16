@@ -1,6 +1,8 @@
-# 🎄 Windows环境下启动HTTPS本地服务器完整指南
+# 🎄 启动HTTPS本地服务器完整指南
 
 > 适用于3D圣诞树项目的手机摄像头手势控制功能
+>
+> 支持 Windows 和 Ubuntu/Linux 系统
 
 ---
 
@@ -19,10 +21,19 @@
 ## 🔧 环境要求
 
 ### 必需软件
+
+#### Windows系统
 - **Windows 10/11** 操作系统
 - **Node.js** 16.x 或更高版本
 
+#### Ubuntu/Linux系统
+- **Ubuntu 18.04+** 或其他Linux发行版
+- **Node.js** 16.x 或更高版本
+- **OpenSSL**（通常已预装）
+
 ### 检查Node.js是否已安装
+
+#### Windows系统
 
 打开 **PowerShell** 或 **命令提示符(CMD)**，输入：
 
@@ -34,12 +45,51 @@ node --version
 
 **如果提示"不是内部或外部命令"**：❌ 需要安装
 
+#### Ubuntu/Linux系统
+
+打开 **终端(Terminal)**，输入：
+
+```bash
+node --version
+```
+
+**如果显示版本号**：✅ 已安装，跳到[快速开始](#快速开始)
+
+**如果提示"command not found"**：❌ 需要安装
+
 ### 安装Node.js
+
+#### Windows系统
 
 1. 访问官网：https://nodejs.org/
 2. 下载 **LTS（长期支持版）**
 3. 双击安装包，一路 **Next** 到底
 4. 重启命令行窗口，再次检查版本
+
+#### Ubuntu/Linux系统
+
+```bash
+# 更新软件包列表
+sudo apt update
+
+# 安装Node.js和npm
+sudo apt install nodejs npm -y
+
+# 验证安装
+node --version
+npm --version
+```
+
+**推荐方式（安装最新LTS版本）**：
+
+```bash
+# 使用NodeSource仓库
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# 验证安装
+node --version
+```
 
 ---
 
@@ -47,21 +97,38 @@ node --version
 
 ### 第1步：安装 http-server
 
+#### Windows系统
+
 在项目文件夹打开 **PowerShell** 或 **CMD**，执行：
 
 ```bash
 npm install -g http-server
 ```
 
+#### Ubuntu/Linux系统
+
+打开 **终端(Terminal)**，执行：
+
+```bash
+sudo npm install -g http-server
+```
+
+**⚠️ 注意**：Linux系统需要使用 `sudo` 权限进行全局安装
+
 **说明**：
 - `-g` 表示全局安装，以后可以在任何文件夹使用
 - 安装时间约 10-30 秒，取决于网络速度
 
-**如果速度很慢**，可以使用国内镜像：
+**如果速度很慢**（国内用户推荐），可以使用镜像：
 
 ```bash
+# Windows
 npm config set registry https://registry.npmmirror.com
 npm install -g http-server
+
+# Ubuntu/Linux
+npm config set registry https://registry.npmmirror.com
+sudo npm install -g http-server
 ```
 
 ### 第2步：启动HTTPS服务器
@@ -92,6 +159,8 @@ Hit CTRL-C to stop the server
 
 **方法2：手动查询**
 
+#### Windows系统
+
 ```bash
 ipconfig
 ```
@@ -100,6 +169,24 @@ ipconfig
 
 ```
 IPv4 地址 . . . . . . . . . . . . : 192.168.1.100  ← 这就是你的IP
+```
+
+#### Ubuntu/Linux系统
+
+```bash
+# 方法1：使用ip命令（推荐）
+ip addr show | grep inet
+
+# 方法2：使用ifconfig（需要安装net-tools）
+ifconfig | grep inet
+
+# 方法3：使用hostname命令
+hostname -I
+```
+
+输出示例：
+```
+192.168.1.100  ← 这就是你的IP
 ```
 
 ### 第4步：手机访问
@@ -217,6 +304,7 @@ npm ERR! errno ECONNREFUSED
 
 **解决方法**：
 
+#### Windows系统
 ```bash
 # 切换到淘宝镜像
 npm config set registry https://registry.npmmirror.com
@@ -226,6 +314,32 @@ npm install -g http-server
 
 # 验证镜像
 npm config get registry
+```
+
+#### Ubuntu/Linux系统
+```bash
+# 切换到淘宝镜像
+npm config set registry https://registry.npmmirror.com
+
+# 重新安装（需要sudo）
+sudo npm install -g http-server
+
+# 验证镜像
+npm config get registry
+```
+
+**如果遇到权限错误（Linux）**：
+```bash
+# 方法1：使用sudo
+sudo npm install -g http-server
+
+# 方法2：修改npm全局目录权限（推荐）
+mkdir ~/.npm-global
+npm config set prefix '~/.npm-global'
+echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+# 然后就可以不用sudo安装了
+npm install -g http-server
 ```
 
 ### 问题4：手机无法发现摄像头
@@ -389,12 +503,28 @@ netstat -ano | findstr :8000
 
 # 清理npm缓存（如果安装出错）
 npm cache clean --force
+
+# Ubuntu/Linux 获取IP
+hostname -I
 ```
 
 ### 快速重启流程
 
+#### Windows系统
 ```bash
 # 1. 在项目文件夹打开PowerShell
+# 2. 运行命令
+http-server -S -p 8000
+
+# 3. 复制显示的 https://192.168.x.x:8000
+# 4. 在手机浏览器打开
+```
+
+#### Ubuntu/Linux系统
+```bash
+# 1. 在项目文件夹打开终端
+cd /path/to/your/project
+
 # 2. 运行命令
 http-server -S -p 8000
 
@@ -464,14 +594,75 @@ https://192.168.1.100:8000/christmas_tree_touch&gesture.html
 
 ---
 
+## 🖥️ 系统差异对比表
+
+| 操作 | Windows | Ubuntu/Linux |
+|------|---------|--------------|
+| **安装Node.js** | 下载安装包双击安装 | `sudo apt install nodejs npm` |
+| **安装http-server** | `npm install -g http-server` | `sudo npm install -g http-server` |
+| **启动服务器** | `http-server -S -p 8000` | `http-server -S -p 8000` |
+| **查看IP地址** | `ipconfig` | `hostname -I` 或 `ip addr` |
+| **查看端口占用** | `netstat -ano \| findstr :8000` | `sudo lsof -i :8000` |
+| **终止进程** | `taskkill /PID xxx /F` | `kill -9 xxx` |
+| **防火墙配置** | Windows Defender防火墙 | `sudo ufw allow 8000` |
+| **权限需求** | 普通用户（1024以上端口）| sudo（全局安装/特权端口）|
+
+---
+
+## 🐧 Ubuntu/Linux 额外说明
+
+### Python内置服务器（备选方案）
+
+如果不想安装Node.js，Ubuntu/Linux可以使用Python内置服务器：
+
+```bash
+# Python 3（Ubuntu 18.04+自带）
+python3 -m http.server 8000
+
+# 注意：Python服务器默认只支持HTTP，不支持HTTPS
+# 如果需要HTTPS，仍需使用http-server
+```
+
+### 生成自定义SSL证书（可选）
+
+Ubuntu系统通常已预装OpenSSL，可以生成自己的证书：
+
+```bash
+# 生成自签名证书（有效期365天）
+openssl req -newkey rsa:2048 -new -nodes -x509 -days 365 -keyout key.pem -out cert.pem
+
+# 使用自定义证书启动服务器
+http-server -S -C cert.pem -K key.pem -p 8000
+```
+
+### 防火墙配置（Ubuntu）
+
+如果使用UFW防火墙：
+
+```bash
+# 允许8000端口
+sudo ufw allow 8000
+
+# 查看防火墙状态
+sudo ufw status
+
+# 如果防火墙未启用
+sudo ufw enable
+```
+
+---
+
 ## 📚 延伸阅读
 
 - [http-server 官方文档](https://github.com/http-party/http-server)
 - [MediaPipe 手势识别](https://developers.google.com/mediapipe/solutions/vision/gesture_recognizer)
 - [浏览器摄像头API](https://developer.mozilla.org/zh-CN/docs/Web/API/MediaDevices/getUserMedia)
+- [Node.js 官方安装指南](https://nodejs.org/en/download/package-manager/)
+- [Ubuntu UFW 防火墙指南](https://help.ubuntu.com/community/UFW)
 
 ---
 
 **祝您使用愉快！🎄✨**
 
 *最后更新：2025-12-16*
+*支持系统：Windows 10/11, Ubuntu 18.04+, 其他Linux发行版*

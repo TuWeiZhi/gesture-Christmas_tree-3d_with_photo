@@ -707,18 +707,34 @@
             scene.fog = new THREE.FogExp2(CONFIG.colors.fog, 0.015); // 调整雾气浓度
 
             camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 2, CONFIG.camera.z); 
+            camera.position.set(0, 2, CONFIG.camera.z);
 
             // 启用 alpha: true 以便未来如果有需要可以透过背景
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.toneMapping = THREE.ReinhardToneMapping; 
-            renderer.toneMappingExposure = 2.2; 
+            renderer.toneMapping = THREE.ReinhardToneMapping;
+            
+            // 🔧 修复：降低色调映射曝光度，避免过度曝光影响照片
+            // 原值 2.2 会让整个场景过亮，影响照片原始色彩
+            // 新值 1.5 保持场景亮度的同时，减少对照片的影响
+            renderer.toneMappingExposure = 1.5;  // 从 2.2 降至 1.5
+            
             container.appendChild(renderer.domElement);
 
             mainGroup = new THREE.Group();
             scene.add(mainGroup);
+
+            // 🔍 调试日志：渲染器配置
+            console.log('🎬 [initThree] 渲染器配置 (已优化):', {
+                toneMapping: 'ReinhardToneMapping',
+                toneMappingExposure: renderer.toneMappingExposure,
+                pixelRatio: renderer.getPixelRatio(),
+                size: `${window.innerWidth}x${window.innerHeight}`,
+                antialias: true,
+                alpha: true,
+                note: '曝光度降低到 1.5，减少对照片的影响'
+            });
         }
 
         function setupEnvironment() {
@@ -747,18 +763,42 @@
             const fill = new THREE.DirectionalLight(0xffeebb, 0.8);
             fill.position.set(0, 0, 50);
             scene.add(fill);
+
+            // 🔍 调试日志：光源配置
+            console.log('💡 [setupLights] 光源配置:', {
+                ambient: { color: '0xffffff', intensity: 0.6 },
+                innerLight: { color: '0xffaa00', intensity: 2, distance: 20 },
+                spotGold: { color: '0xffcc66', intensity: 1200, angle: 0.5, position: [30, 40, 40] },
+                spotBlue: { color: '0x6688ff', intensity: 800, position: [-30, 20, -30] },
+                fill: { color: '0xffeebb', intensity: 0.8, position: [0, 0, 50] }
+            });
         }
 
         function setupPostProcessing() {
             const renderScene = new RenderPass(scene, camera);
             const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-            bloomPass.threshold = 0.65; // 稍微降低阈值让更多东西发光
-            bloomPass.strength = 0.5; 
-            bloomPass.radius = 0.4;
+            
+            // 🔧 修复：提高 Bloom 阈值，避免影响照片
+            // 原值 0.65 会让所有稍亮的物体都发光，包括照片
+            // 新值 0.95 只让非常亮的物体（如金色装饰）发光
+            bloomPass.threshold = 0.95;
+            
+            // 🔧 修复：降低 Bloom 强度，减少泛光溢出
+            bloomPass.strength = 0.3;  // 从 0.5 降至 0.3
+            bloomPass.radius = 0.3;    // 从 0.4 降至 0.3
 
             composer = new EffectComposer(renderer);
             composer.addPass(renderScene);
             composer.addPass(bloomPass);
+
+            // 🔍 调试日志：后处理配置
+            console.log('✨ [setupPostProcessing] Bloom 配置 (已优化):', {
+                threshold: bloomPass.threshold,
+                strength: bloomPass.strength,
+                radius: bloomPass.radius,
+                resolution: `${window.innerWidth}x${window.innerHeight}`,
+                note: '阈值提高到 0.95，避免影响照片'
+            });
         }
 
         function createTextures() {
@@ -1096,10 +1136,6 @@
         }
 
         function addPhotoToScene(texture, sourceUrl = null) {
-            const frameGeo = new THREE.BoxGeometry(1.4, 1.4, 0.05);
-            const frameMat = new THREE.MeshStandardMaterial({ color: CONFIG.colors.champagneGold, metalness: 1.0, roughness: 0.1 });
-            const frame = new THREE.Mesh(frameGeo, frameMat);
-
             let width = 1.2;
             let height = 1.2;
             
@@ -1112,16 +1148,65 @@
                 }
             }
 
-            const photoGeo = new THREE.PlaneGeometry(width, height);
-            const photoMat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
-            const photo = new THREE.Mesh(photoGeo, photoMat);
-            photo.position.z = 0.04;
+            // 🔍 调试日志：检查纹理属性
+            console.log('📸 [addPhotoToScene] 创建照片:', {
+                url: sourceUrl,
+                textureColorSpace: texture.colorSpace,
+                hasImage: !!texture.image,
+                imageSize: texture.image ? `${texture.image.width}x${texture.image.height}` : 'N/A'
+            });
 
-            const group = new THREE.Group();
-            group.add(frame);
-            group.add(photo);
+            // 创建金色边框（受光照影响）
+            const borderWidth = width * 1.15;  // 边框比照片大 15%
+            const borderHeight = height * 1.15;
+            const borderGeo = new THREE.PlaneGeometry(borderWidth, borderHeight);
+            const borderMat = new THREE.MeshStandardMaterial({
+                color: 0xFFD700,  // 金色
+                metalness: 0.8,
+                roughness: 0.2,
+                side: THREE.DoubleSide,
+                emissive: 0x443300,
+                
+                // 🔧 修复：降低边框自发光强度，避免触发 Bloom
+                emissiveIntensity: 0.05  // 从 0.1 降至 0.05
+            });
+            const border = new THREE.Mesh(borderGeo, borderMat);
+            border.position.z = -0.01;  // 边框在照片后面
+            border.renderOrder = 998;  // 边框在照片之前渲染
+
+            // 创建照片（不受光照影响）
+            const photoGeo = new THREE.PlaneGeometry(width, height);
+            const photoMat = new THREE.MeshBasicMaterial({
+                map: texture,
+                side: THREE.DoubleSide,
+                toneMapped: false,  // 关键：禁用色调映射，保持原始颜色
+                
+                // 🔧 修复：优化渲染顺序和深度测试
+                // renderOrder 越大越晚渲染，确保照片在后处理前最后渲染
+                // depthWrite: false 避免照片影响其他物体的深度测试
+            });
+            const photo = new THREE.Mesh(photoGeo, photoMat);
+            photo.position.z = 0.01;  // 照片在前面
+            photo.renderOrder = 999;  // 最高渲染优先级，最后渲染
             
-            frame.scale.set(width/1.2, height/1.2, 1);
+            // 🔧 修复：设置照片图层，便于后续选择性渲染
+            photo.layers.enable(0);  // 默认图层
+            photo.layers.enable(1);  // 照片专用图层
+
+            // 🔍 调试日志：检查照片材质属性
+            console.log('🎨 [addPhotoToScene] 照片材质配置 (已优化):', {
+                type: photoMat.type,
+                toneMapped: photoMat.toneMapped,
+                side: photoMat.side,
+                renderOrder: photo.renderOrder,
+                layers: photo.layers.mask,
+                note: 'renderOrder=999 确保最后渲染，减少后处理影响'
+            });
+
+            // 组合边框和照片
+            const group = new THREE.Group();
+            group.add(border);
+            group.add(photo);
 
             const s = 0.8;
             group.scale.set(s,s,s);

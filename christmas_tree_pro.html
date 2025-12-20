@@ -250,6 +250,170 @@
                 font-size: 6px;
             }
         }
+
+        /* 照片管理模态框样式 */
+        #photo-manager-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 13, 26, 0.95);
+            z-index: 200;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(10px);
+        }
+
+        #photo-manager-modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: rgba(20, 20, 20, 0.9);
+            border: 2px solid rgba(212, 175, 55, 0.6);
+            border-radius: 8px;
+            padding: 30px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+            box-shadow: 0 0 50px rgba(212, 175, 55, 0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(212, 175, 55, 0.3);
+        }
+
+        .modal-title {
+            color: #d4af37;
+            font-size: 24px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            font-weight: 100;
+        }
+
+        .modal-close {
+            background: rgba(212, 175, 55, 0.2);
+            border: 1px solid rgba(212, 175, 55, 0.4);
+            color: #d4af37;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            transition: all 0.3s;
+        }
+
+        .modal-close:hover {
+            background: #d4af37;
+            color: #000;
+        }
+
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .photo-item {
+            position: relative;
+            aspect-ratio: 1;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .photo-item:hover {
+            border-color: #d4af37;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.4);
+            transform: scale(1.05);
+        }
+
+        .photo-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .photo-item .delete-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(153, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .photo-item:hover .delete-overlay {
+            opacity: 1;
+        }
+
+        .delete-icon {
+            color: #fff;
+            font-size: 36px;
+            font-weight: bold;
+        }
+
+        .photo-count {
+            color: rgba(212, 175, 55, 0.7);
+            font-size: 12px;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        /* 移动端优化 */
+        @media (max-width: 768px) {
+            .modal-content {
+                padding: 20px;
+                max-width: 95%;
+            }
+
+            .modal-title {
+                font-size: 18px;
+                letter-spacing: 2px;
+            }
+
+            .photo-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+                gap: 10px;
+            }
+
+            .modal-close {
+                padding: 6px 12px;
+                font-size: 8px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .modal-content {
+                padding: 15px;
+            }
+
+            .modal-title {
+                font-size: 14px;
+            }
+
+            .photo-grid {
+                grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+                gap: 8px;
+            }
+        }
     </style>
     
     <style>
@@ -289,9 +453,13 @@
                     Select Files
                     <input type="file" id="file-input" multiple accept="image/*">
                 </label>
+                
+                <button class="upload-btn" id="manage-photos-btn">
+                    Manage Photos
+                </button>
             </div>
             <div class="hint-text">Use "Select Folder" to load all photos at once</div>
-            <div class="hint-text" style="opacity: 0.7; font-size: 8px;">Or put photos in "./images/" (1.jpg - 30.jpg)</div>
+            <div class="hint-text" style="opacity: 0.7; font-size: 8px;">Photos auto-load from "./images/" (1-200.jpg/png)</div>
         </div>
     </div>
 
@@ -299,6 +467,18 @@
         <video id="webcam" autoplay playsinline></video>
         <div id="debug-info">Initializing...</div>
         <canvas id="webcam-preview" style="display:none;"></canvas>
+    </div>
+
+    <!-- 照片管理模态框 -->
+    <div id="photo-manager-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Photo Manager</div>
+                <button class="modal-close" id="close-modal-btn">Close</button>
+            </div>
+            <div class="photo-count" id="photo-count">Loading photos...</div>
+            <div class="photo-grid" id="photo-grid"></div>
+        </div>
     </div>
 
     <script type="module">
@@ -349,24 +529,35 @@
         };
 
         let scene, camera, renderer, composer;
-        let mainGroup; 
+        let mainGroup;
         let clock = new THREE.Clock();
-        let particleSystem = []; 
+        let particleSystem = [];
         let photoMeshGroup = new THREE.Group();
         let handLandmarker, video;
-        let caneTexture; 
+        let caneTexture;
         let snowSystem; // 新增：雪花系统
         const debugInfo = document.getElementById('debug-info');
 
+        // --- 新增：照片管理数据结构 ---
+        let photoDataArray = []; // 存储所有照片的元数据 { id, url, texture, particle, isVisible }
+        let photoIdCounter = 0;
+
         async function init() {
+            console.log('🎄 [init] 初始化开始...');
+            console.log('🎄 [init] 当前页面 URL:', window.location.href);
+            console.log('🎄 [init] 基础路径:', window.location.pathname);
+            
             initThree();
-            setupEnvironment(); 
+            setupEnvironment();
             setupLights();
             createTextures();
-            createParticles(); 
+            createParticles();
             createDust();
             createSnow(); // 新增：创建雪花
+            
+            console.log('🎄 [init] 即将调用 loadPredefinedImages()');
             loadPredefinedImages();
+            
             setupPostProcessing();
             setupEvents();
             await initMediaPipe();
@@ -376,35 +567,135 @@
             setTimeout(() => loader.remove(), 800);
 
             animate();
+            console.log('🎄 [init] 初始化完成，动画已启动');
         }
 // wp/electronicminer wish you a Merry Christmas!
-        // --- 增强版图片加载系统 ---
-        function loadPredefinedImages() {
+        // --- 增强版图片加载系统 (支持 images.json) ---
+        async function loadPredefinedImages() {
+            console.log('🎄 [loadPredefinedImages] 开始加载预定义图片...');
+            console.log('🎄 [loadPredefinedImages] autoScanLocal:', CONFIG.preload.autoScanLocal);
+            console.log('🎄 [loadPredefinedImages] scanCount:', CONFIG.preload.scanCount);
+            
             const loader = new THREE.TextureLoader();
-            CONFIG.preload.images.forEach(url => {
-                loader.load(url, 
-                    (t) => { t.colorSpace = THREE.SRGBColorSpace; addPhotoToScene(t); },
-                    undefined,
-                    (e) => { console.log(`Skipped: ${url}`); }
-                );
-            });
-
+            let loadedCount = 0;
+            let failedCount = 0;
+            
+            // 扫描本地 images 目录
             if (CONFIG.preload.autoScanLocal) {
-                for (let i = 1; i <= CONFIG.preload.scanCount; i++) {
-                    const pathJpg = `./images/(${i}).jpg`;
-                    const pathPng = `./images/(${i}).png`;
-                    loader.load(pathJpg, 
-                        (t) => { t.colorSpace = THREE.SRGBColorSpace; addPhotoToScene(t); },
-                        undefined,
-                        () => {
-                             loader.load(pathPng, 
-                                (t) => { t.colorSpace = THREE.SRGBColorSpace; addPhotoToScene(t); },
+                // 方案1：尝试从 images.json 加载（新方式）
+                console.log('📋 尝试加载 images.json 文件列表...');
+                
+                try {
+                    const response = await fetch('./images.json');
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log(`✅ images.json 加载成功！`);
+                        console.log(`📊 文件信息: 总计 ${data.totalCount} 张图片`);
+                        console.log(`🕒 生成时间: ${data.generatedAt}`);
+                        console.log(` 基础目录: ${data.baseDir}`);
+                        
+                        // 使用 JSON 中的文件列表加载图片
+                        data.images.forEach(filename => {
+                            const path = `./${data.baseDir}/${filename}`;
+                            console.log(`🖼️  加载: ${path}`);
+                            
+                            loader.load(path,
+                                (t) => {
+                                    t.colorSpace = THREE.SRGBColorSpace;
+                                    addPhotoToScene(t, path);
+                                    loadedCount++;
+                                    console.log(`✅ 图片加载成功 (${loadedCount}/${data.totalCount}): ${filename}`);
+                                },
                                 undefined,
-                                () => {} 
-                             );
-                        }
-                    );
+                                (error) => {
+                                    failedCount++;
+                                    console.warn(`❌ 图片加载失败: ${filename}`, error);
+                                }
+                            );
+                        });
+                        
+                        // 延迟显示统计信息
+                        setTimeout(() => {
+                            console.log(`\n📊 图片加载统计 (JSON模式):`);
+                            console.log(`   ✅ 成功加载: ${loadedCount} 张`);
+                            console.log(`   ❌ 加载失败: ${failedCount} 张`);
+                            console.log(`   📷 场景中的照片总数: ${photoDataArray.length}\n`);
+                        }, 5000);
+                        
+                        return; // 使用 JSON 加载成功，直接返回
+                    }
+                } catch (error) {
+                    console.log(`⚠️  images.json 不存在或加载失败，回退到数字扫描模式`);
+                    console.log(`💡 提示: 运行 'npm run build:images' 生成 images.json 以支持任意文件名`);
                 }
+                
+                // 方案2：回退到数字序号扫描（旧方式 - 向后兼容）
+                console.log(`📂 开始扫描本地 ./images/ 目录 (1-${CONFIG.preload.scanCount})`);
+                console.log(`📝 支持的文件名格式: [N].jpg, [N].png, ([N]).jpg, ([N]).png`);
+                
+                for (let i = 1; i <= CONFIG.preload.scanCount; i++) {
+                    // 支持 4 种命名格式
+                    const paths = [
+                        `./images/${i}.jpg`,      // 无括号 JPG
+                        `./images/${i}.png`,      // 无括号 PNG
+                        `./images/(${i}).jpg`,    // 带括号 JPG
+                        `./images/(${i}).png`     // 带括号 PNG
+                    ];
+                    
+                    let loaded = false;
+                    let attemptCount = 0;
+                    
+                    // 尝试所有路径
+                    const tryLoadPath = (index) => {
+                        if (index >= paths.length || loaded) return;
+                        
+                        const path = paths[index];
+                        attemptCount++;
+                        
+                        loader.load(path,
+                            (t) => {
+                                if (!loaded) {
+                                    t.colorSpace = THREE.SRGBColorSpace;
+                                    addPhotoToScene(t, path);
+                                    loadedCount++;
+                                    loaded = true;
+                                    console.log(`✅ 图片加载成功 (${loadedCount}): ${path}`);
+                                }
+                            },
+                            undefined,
+                            (error) => {
+                                // 当前路径失败，尝试下一个
+                                tryLoadPath(index + 1);
+                                
+                                // 所有路径都失败了
+                                if (index === paths.length - 1 && !loaded) {
+                                    failedCount++;
+                                    console.log(`⚠️  图片 ${i} 未找到 (尝试了所有格式)`);
+                                }
+                            }
+                        );
+                    };
+                    
+                    tryLoadPath(0);
+                }
+                
+                // 延迟显示统计信息
+                setTimeout(() => {
+                    console.log(`\n📊 图片加载统计 (数字扫描模式):`);
+                    console.log(`   ✅ 成功加载: ${loadedCount} 张`);
+                    console.log(`   ❌ 未找到: ${failedCount} 个编号`);
+                    console.log(`   📷 场景中的照片总数: ${photoDataArray.length}\n`);
+                    
+                    if (loadedCount === 0 && CONFIG.preload.autoScanLocal) {
+                        console.warn(`\n⚠️  警告：未能从 ./images/ 目录加载任何照片！`);
+                        console.warn(`请确保：`);
+                        console.warn(`  1. ./images/ 目录存在`);
+                        console.warn(`  2. 图片文件命名为: 1.jpg, 2.jpg... 或 (1).jpg, (2).jpg...`);
+                        console.warn(`  3. 或运行 'npm run build:images' 生成 images.json 以支持任意文件名`);
+                        console.warn(`  4. http-server 正在运行并能访问 images 目录`);
+                        console.warn(`  5. 检查浏览器控制台是否有 CORS 错误\n`);
+                    }
+                }, 5000);
             }
         }
 
@@ -804,7 +1095,7 @@
             }
         }
 
-        function addPhotoToScene(texture) {
+        function addPhotoToScene(texture, sourceUrl = null) {
             const frameGeo = new THREE.BoxGeometry(1.4, 1.4, 0.05);
             const frameMat = new THREE.MeshStandardMaterial({ color: CONFIG.colors.champagneGold, metalness: 1.0, roughness: 0.1 });
             const frame = new THREE.Mesh(frameGeo, frameMat);
@@ -836,9 +1127,21 @@
             group.scale.set(s,s,s);
             
             photoMeshGroup.add(group);
-            particleSystem.push(new Particle(group, 'PHOTO', false));
+            const particle = new Particle(group, 'PHOTO', false);
+            particleSystem.push(particle);
+
+            // 保存照片元数据
+            const photoData = {
+                id: photoIdCounter++,
+                url: sourceUrl || texture.image?.src || 'data:image',
+                texture: texture,
+                particle: particle,
+                isVisible: true
+            };
+            photoDataArray.push(photoData);
 
             updatePhotoLayout();
+            return photoData;
         }
         // wp/electronicminer wish you a Merry Christmas!
         function handleImageUpload(e) {
@@ -851,11 +1154,121 @@
                 reader.onload = (ev) => {
                     new THREE.TextureLoader().load(ev.target.result, (t) => {
                         t.colorSpace = THREE.SRGBColorSpace;
-                        addPhotoToScene(t);
+                        addPhotoToScene(t, ev.target.result);
                     });
                 }
                 reader.readAsDataURL(f);
             });
+        }
+
+        // --- 新增：照片管理功能 ---
+        function removePhotoFromScene(photoData) {
+            if (!photoData || !photoData.isVisible) return;
+
+            // 从场景中移除mesh
+            const particle = photoData.particle;
+            if (particle && particle.mesh) {
+                photoMeshGroup.remove(particle.mesh);
+                
+                // 从粒子系统中移除
+                const index = particleSystem.indexOf(particle);
+                if (index > -1) {
+                    particleSystem.splice(index, 1);
+                }
+                
+                // 清理几何体和材质
+                if (particle.mesh.children) {
+                    particle.mesh.children.forEach(child => {
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) {
+                            if (child.material.map) child.material.map.dispose();
+                            child.material.dispose();
+                        }
+                    });
+                }
+            }
+
+            // 标记为不可见
+            photoData.isVisible = false;
+
+            // 重新布局剩余照片
+            updatePhotoLayout();
+        }
+
+        function openPhotoManager() {
+            const modal = document.getElementById('photo-manager-modal');
+            const grid = document.getElementById('photo-grid');
+            const count = document.getElementById('photo-count');
+            
+            // 清空网格
+            grid.innerHTML = '';
+            
+            // 获取所有可见照片
+            const visiblePhotos = photoDataArray.filter(p => p.isVisible);
+            count.textContent = `Total Photos: ${visiblePhotos.length}`;
+            
+            if (visiblePhotos.length === 0) {
+                grid.innerHTML = '<div style="color: rgba(212, 175, 55, 0.5); text-align: center; padding: 40px; grid-column: 1/-1;">No photos available</div>';
+            } else {
+                visiblePhotos.forEach(photoData => {
+                    const item = document.createElement('div');
+                    item.className = 'photo-item';
+                    
+                    // 创建缩略图
+                    const img = document.createElement('img');
+                    
+                    // 处理不同类型的图片源
+                    if (photoData.texture && photoData.texture.image) {
+                        if (photoData.texture.image instanceof HTMLImageElement) {
+                            img.src = photoData.texture.image.src;
+                        } else if (photoData.texture.image instanceof HTMLCanvasElement) {
+                            img.src = photoData.texture.image.toDataURL();
+                        } else {
+                            img.src = photoData.url;
+                        }
+                    } else {
+                        img.src = photoData.url;
+                    }
+                    
+                    img.alt = 'Photo';
+                    img.onerror = () => {
+                        img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="%23333" width="100" height="100"/><text x="50" y="50" text-anchor="middle" fill="%23d4af37" font-size="12">Image</text></svg>';
+                    };
+                    
+                    // 创建删除覆盖层
+                    const overlay = document.createElement('div');
+                    overlay.className = 'delete-overlay';
+                    overlay.innerHTML = '<div class="delete-icon">✕</div>';
+                    
+                    item.appendChild(img);
+                    item.appendChild(overlay);
+                    
+                    // 点击删除
+                    item.addEventListener('click', () => {
+                        if (confirm('Delete this photo from the scene?\n(This will NOT delete the file from your ./images/ folder)')) {
+                            removePhotoFromScene(photoData);
+                            item.remove();
+                            
+                            // 更新计数
+                            const newVisiblePhotos = photoDataArray.filter(p => p.isVisible);
+                            count.textContent = `Total Photos: ${newVisiblePhotos.length}`;
+                            
+                            if (newVisiblePhotos.length === 0) {
+                                grid.innerHTML = '<div style="color: rgba(212, 175, 55, 0.5); text-align: center; padding: 40px; grid-column: 1/-1;">No photos available</div>';
+                            }
+                        }
+                    });
+                    
+                    grid.appendChild(item);
+                });
+            }
+            
+            modal.classList.add('active');
+        }
+
+        function closePhotoManager() {
+            const modal = document.getElementById('photo-manager-modal');
+            modal.classList.remove('active');
         }
 
         // --- MEDIAPIPE (Adaptive Fix) ---
@@ -977,7 +1390,23 @@
             document.getElementById('file-input').addEventListener('change', handleImageUpload);
             document.getElementById('folder-input').addEventListener('change', handleImageUpload);
             
+            // 照片管理按钮
+            document.getElementById('manage-photos-btn').addEventListener('click', openPhotoManager);
+            document.getElementById('close-modal-btn').addEventListener('click', closePhotoManager);
+            
+            // 点击模态框背景关闭
+            document.getElementById('photo-manager-modal').addEventListener('click', (e) => {
+                if (e.target.id === 'photo-manager-modal') {
+                    closePhotoManager();
+                }
+            });
+            
+            // ESC键关闭模态框
             window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    closePhotoManager();
+                }
+                
                 if (e.key.toLowerCase() === 'h') {
                     const controls = document.querySelector('.controls-wrapper');
                     if (controls) controls.classList.toggle('ui-hidden');

@@ -1,0 +1,23 @@
+{
+  "name": "gesture-christmas-tree-3d",
+  "version": "1.0.0",
+  "description": "3D手势控制圣诞树 - 支持任意文件名的图片加载",
+  "main": "christmas_tree_pro.html",
+  "scripts": {
+    "build:images": "node generate-images-list.js",
+    "watch:images": "node generate-images-list.js && echo 'Watching for changes...' && npm run build:images"
+  },
+  "keywords": [
+    "christmas-tree",
+    "3d",
+    "gesture-control",
+    "three.js"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "devDependencies": {},
+  "dependencies": {}
+}

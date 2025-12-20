@@ -1,0 +1,9 @@
+# 忽略 images 目录
+images/
+
+# 忽略自动生成的图片列表文件
+images.json
+
+# Node.js
+node_modules/
+package-lock.json

@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>新年烟花相册</title>
+    <style>
+      :root {
+        --gold: #d4af37;
+        --goldSoft: rgba(212, 175, 55, 0.45);
+        --red: #ff2b2b;
+        --panel: rgba(0, 0, 0, 0.35);
+        --panel2: rgba(0, 0, 0, 0.55);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.65);
+        --border: rgba(212, 175, 55, 0.28);
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: radial-gradient(circle at 50% 25%, #1b1634 0%, #0a1026 35%, #040712 100%);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
+          "Apple Color Emoji", "Segoe UI Emoji";
+      }
+
+      code {
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 2px 6px;
+        border-radius: 6px;
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      #canvas-container {
+        width: 100vw;
+        height: 100vh;
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+      }
+
+      #ui-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+      }
+
+      #title {
+        position: absolute;
+        top: 22px;
+        left: 22px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(255, 43, 43, 0.16), rgba(0, 0, 0, 0.35));
+        border: 1px solid rgba(255, 43, 43, 0.3);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 18px 46px rgba(0, 0, 0, 0.4);
+        pointer-events: none;
+      }
+
+      #title h1 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: 1px;
+      }
+
+      #title p {
+        margin: 6px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .controls {
+        position: absolute;
+        top: 18px;
+        right: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-end;
+        pointer-events: auto;
+      }
+
+      .btn-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .btn {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
+        padding: 10px 14px;
+        border-radius: 12px;
+        letter-spacing: 1px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+        border-color: rgba(212, 175, 55, 0.7);
+        background: rgba(212, 175, 55, 0.16);
+      }
+
+      .btn-primary {
+        border-color: rgba(255, 43, 43, 0.5);
+        background: rgba(255, 43, 43, 0.12);
+      }
+
+      .btn-primary:hover {
+        border-color: rgba(255, 43, 43, 0.85);
+        background: rgba(255, 43, 43, 0.22);
+      }
+
+      input[type="file"] {
+        display: none;
+      }
+
+      .hint {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.6);
+        text-align: right;
+        max-width: min(560px, 80vw);
+        line-height: 1.5;
+      }
+
+      .ui-hidden {
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+
+      #webcam-wrapper {
+        position: absolute;
+        left: 18px;
+        bottom: 18px;
+        width: 240px;
+        height: 180px;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(212, 175, 55, 0.35);
+        box-shadow: 0 18px 55px rgba(0, 0, 0, 0.55);
+        background: rgba(0, 0, 0, 0.55);
+        pointer-events: none;
+        z-index: 15;
+      }
+
+      #webcam {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1);
+      }
+
+      #debug {
+        position: absolute;
+        left: 10px;
+        bottom: 10px;
+        right: 10px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        font-size: 11px;
+        line-height: 1.35;
+        background: rgba(0, 0, 0, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: rgba(255, 255, 255, 0.78);
+        backdrop-filter: blur(6px);
+      }
+
+      #start-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 100;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at 50% 35%, rgba(255, 43, 43, 0.2), rgba(0, 0, 0, 0.85));
+        pointer-events: auto;
+      }
+
+      #start-card {
+        width: min(720px, calc(100vw - 32px));
+        border-radius: 16px;
+        border: 1px solid rgba(212, 175, 55, 0.25);
+        background: rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(12px);
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+        padding: 22px;
+      }
+
+      #start-card h2 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 1px;
+      }
+
+      #start-card p {
+        margin: 10px 0 0;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.68);
+        line-height: 1.65;
+      }
+
+      #start-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      #toast {
+        position: absolute;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%);
+        z-index: 120;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 18px 55px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(10px);
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.8);
+        opacity: 0;
+        transition: opacity 0.25s ease, transform 0.25s ease;
+        pointer-events: none;
+        max-width: min(720px, calc(100vw - 24px));
+        text-align: center;
+      }
+
+      #toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-4px);
+      }
+
+      #photo-modal {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 200;
+        background: rgba(0, 0, 0, 0.6);
+        pointer-events: auto;
+      }
+
+      #photo-modal.active {
+        display: flex;
+      }
+
+      .modal-card {
+        width: min(920px, calc(100vw - 20px));
+        height: min(640px, calc(100vh - 20px));
+        background: rgba(0, 0, 0, 0.62);
+        border: 1px solid rgba(212, 175, 55, 0.25);
+        border-radius: 16px;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 14px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .modal-title {
+        font-size: 13px;
+        letter-spacing: 1px;
+        color: rgba(255, 255, 255, 0.88);
+      }
+
+      .modal-body {
+        flex: 1;
+        overflow: auto;
+        padding: 12px;
+      }
+
+      .photo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+        gap: 10px;
+      }
+
+      .photo-item {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.04);
+        cursor: pointer;
+        position: relative;
+        user-select: none;
+      }
+
+      .photo-item img {
+        width: 100%;
+        height: 92px;
+        display: block;
+        object-fit: cover;
+      }
+
+      .photo-badge {
+        position: absolute;
+        left: 8px;
+        top: 8px;
+        font-size: 10px;
+        padding: 4px 6px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(8px);
+      }
+
+      .photo-actions {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding: 10px;
+        background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.7));
+        opacity: 0;
+        transition: opacity 0.15s ease;
+      }
+
+      .photo-item:hover .photo-actions {
+        opacity: 1;
+      }
+
+      .photo-actions button {
+        pointer-events: auto;
+        border: 1px solid rgba(255, 43, 43, 0.35);
+        background: rgba(255, 43, 43, 0.12);
+        color: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      @media (max-width: 520px) {
+        #webcam-wrapper {
+          width: 180px;
+          height: 135px;
+        }
+        #title {
+          left: 14px;
+          top: 14px;
+        }
+        .controls {
+          top: 14px;
+          right: 14px;
+        }
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+          "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="canvas-container"></div>
+    <div id="ui-layer">
+      <div id="title">
+        <h1>新年烟花相册</h1>
+        <p>张开手掌：连发烟花 | 捏合：点燃照片烟花（颜色采样 + 马赛克轮廓） | H：隐藏 UI</p>
+      </div>
+
+      <div class="controls" id="controls">
+        <div class="btn-row">
+          <label class="btn btn-primary">
+            选择文件夹
+            <input type="file" id="folder-input" webkitdirectory directory multiple />
+          </label>
+          <label class="btn btn-primary">
+            选择图片
+            <input type="file" id="file-input" multiple accept="image/*" />
+          </label>
+          <button class="btn" id="manage-photos-btn">照片管理</button>
+        </div>
+        <div class="hint" id="hint">
+          支持从 <code>./images/</code> 自动加载（可用 <code>npm run build:images</code> 生成 <code>images.json</code>），或直接上传。
+        </div>
+      </div>
+
+      <div id="webcam-wrapper">
+        <video id="webcam" autoplay playsinline muted></video>
+        <div id="debug">等待开始…</div>
+      </div>
+
+      <div id="start-overlay">
+        <div id="start-card">
+          <h2>进入烟花场景</h2>
+          <p>为了手势控制与更稳定的摄像头体验，请用本地服务器打开页面；手机/iPad 建议使用 HTTPS 启动方式。</p>
+          <div id="start-actions">
+            <button class="btn btn-primary" id="start-btn">开始（请求摄像头）</button>
+            <button class="btn" id="start-no-camera-btn">开始（不使用摄像头）</button>
+            <a class="btn" href="./index.html">返回入口页</a>
+          </div>
+        </div>
+      </div>
+
+      <div id="toast"></div>
+
+      <div id="photo-modal">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-label="Photo Manager">
+          <div class="modal-header">
+            <div class="modal-title" id="photo-count">照片</div>
+            <div class="btn-row">
+              <button class="btn" id="close-photo-modal-btn">关闭</button>
+            </div>
+          </div>
+          <div class="modal-body">
+            <div class="photo-grid" id="photo-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="./fireworks/main.js"></script>
+  </body>
+</html>

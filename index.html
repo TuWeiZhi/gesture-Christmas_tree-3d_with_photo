@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>新年烟花相册</title>
+    <style>
+      :root {
+        --bg0: #040712;
+        --bg1: #0a1026;
+        --gold: #d4af37;
+        --red: #ff2b2b;
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.65);
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at 50% 30%, #1b1634 0%, var(--bg1) 35%, var(--bg0) 100%);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
+          "Apple Color Emoji", "Segoe UI Emoji";
+      }
+
+      .card {
+        width: min(720px, calc(100vw - 32px));
+        border: 1px solid rgba(212, 175, 55, 0.25);
+        border-radius: 16px;
+        background: rgba(0, 0, 0, 0.25);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+        overflow: hidden;
+      }
+
+      .hero {
+        padding: 28px 22px 22px;
+        background: radial-gradient(circle at 20% 20%, rgba(255, 43, 43, 0.25), transparent 55%),
+          radial-gradient(circle at 70% 0%, rgba(212, 175, 55, 0.18), transparent 55%);
+      }
+
+      h1 {
+        margin: 0;
+        font-weight: 700;
+        letter-spacing: 2px;
+        font-size: 28px;
+        line-height: 1.2;
+      }
+
+      p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        line-height: 1.7;
+        font-size: 14px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 18px 22px 22px;
+        align-items: center;
+      }
+
+      .btn {
+        appearance: none;
+        border: 1px solid rgba(212, 175, 55, 0.45);
+        background: rgba(0, 0, 0, 0.35);
+        color: var(--text);
+        padding: 12px 16px;
+        border-radius: 12px;
+        letter-spacing: 1px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+        border-color: rgba(212, 175, 55, 0.75);
+        background: rgba(212, 175, 55, 0.18);
+      }
+
+      .btn-primary {
+        border-color: rgba(255, 43, 43, 0.55);
+        background: rgba(255, 43, 43, 0.12);
+      }
+
+      .btn-primary:hover {
+        border-color: rgba(255, 43, 43, 0.9);
+        background: rgba(255, 43, 43, 0.22);
+      }
+
+      .note {
+        padding: 0 22px 22px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.55);
+      }
+
+      code {
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 2px 6px;
+        border-radius: 6px;
+        color: rgba(255, 255, 255, 0.85);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <section class="hero">
+        <h1>新年烟花相册</h1>
+        <p>把你的照片点燃成烟花：爆炸粒子取自照片的颜色采样，爆炸后还会短暂拼出“马赛克轮廓”。手机与 iPad 优先适配。</p>
+      </section>
+      <section class="actions">
+        <a class="btn btn-primary" href="./fireworks.html">进入烟花场景</a>
+        <a class="btn" href="./HTTPS_SETUP_GUIDE.md">手机 HTTPS 指南</a>
+      </section>
+      <div class="note">提示：请用本地服务器打开（不要直接双击文件）。需要摄像头手势时，推荐按指南使用 <code>https</code> 方式启动。</div>
+    </main>
+  </body>
+</html>
+

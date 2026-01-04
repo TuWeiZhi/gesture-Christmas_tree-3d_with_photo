@@ -1,16 +1,19 @@
 {
-  "name": "gesture-christmas-tree-3d",
+  "name": "gesture-fireworks-with-photo",
   "version": "1.0.0",
-  "description": "3D手势控制圣诞树 - 支持任意文件名的图片加载",
-  "main": "christmas_tree_pro.html",
+  "description": "新年烟花相册 - 手势连发烟花 + 照片颜色采样 + 马赛克轮廓",
+  "main": "index.html",
   "scripts": {
     "build:images": "node generate-images-list.js",
     "watch:images": "node generate-images-list.js && echo 'Watching for changes...' && npm run build:images"
   },
   "keywords": [
-    "christmas-tree",
+    "fireworks",
+    "new-year",
+    "photo",
     "3d",
     "gesture-control",
+    "mediapipe",
     "three.js"
   ],
   "author": "",

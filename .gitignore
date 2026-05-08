@@ -7,3 +7,4 @@ images.json
 # Node.js
 node_modules/
 package-lock.json
+.ace-tool/

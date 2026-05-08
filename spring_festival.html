@@ -498,9 +498,7 @@
                 champagneGold: 0xffd966,
                 deepGreen: 0x8b0000,
                 accentRed: 0xff4500,
-                chineseRed: 0xff2d2d,
-                lanternRed: 0xcc0000,
-                fuGold: 0xffd700
+                chineseRed: 0xff2d2d
             },
             particles: {
                 count: 1500,
@@ -511,14 +509,20 @@
             },
             camera: { z: 50 },
             firework: {
-                launchIntervalMin: 300,
-                launchIntervalMax: 800,
-                maxExplosions: 6,
-                launchXRange: 15,
-                targetHeightMin: 8,
-                targetHeightMax: 18,
-                colors: [0xff2d2d, 0xffd700, 0xffffff, 0x00ff7f, 0xda70d6, 0xff8c00],
-                types: ['PEONY', 'WILLOW', 'CHRYSANTHEMUM', 'HEART', 'DOUBLE', 'RING']
+                launchIntervalMin: 150,
+                launchIntervalMax: 500,
+                maxExplosions: 8,
+                launchXRange: 25,
+                targetHeightMin: 6,
+                targetHeightMax: 20,
+                colors: [
+                    0xFF1744, 0x00E676, 0x00B0FF, 0xFFD600, 0xFFFFFF,
+                    0xAA00FF, 0xFF6D00, 0x18FFFF, 0xFF4081, 0x69F0AE,
+                    0x448AFF, 0xFFAB40, 0xE040FB, 0x76FF03
+                ],
+                types: ['PEONY', 'CHRYSANTHEMUM', 'WILLOW', 'PALM', 'CROSSETTE', 'STROBE', 'RING', 'PISTIL'],
+                palettePerExplosionMin: 2,
+                palettePerExplosionMax: 5
             },
             preload: {
                 autoScanLocal: true,
@@ -536,9 +540,36 @@
             mode: 'SCATTER',
             focusIndex: -1,
             focusTarget: null,
-            hand: { detected: false, x: 0, y: 0 },
-            rotation: { x: 0, y: 0 }
+            candidateTarget: null,
+            hand: { detected: false, x: 0, y: 0, filteredX: 0, lastRotateX: null },
+            rotation: { x: 0, y: 0, targetY: 0 }
         };
+
+        const CANDIDATE_SWITCH_THRESHOLD = 0.03;
+        const CANDIDATE_COOLDOWN = 150;
+        const CANDIDATE_VIEW_MARGIN = 1.15;
+        const CANDIDATE_VERTICAL_DEADBAND = 0.18;
+        const CANDIDATE_VERTICAL_WEIGHT = 0.20;
+        let lastCandidateSwitchTime = 0;
+        let focusGestureFrameCount = 0;
+        let focusGestureReleaseFrameCount = 0;
+        let fireworkGestureFrameCount = 0;
+
+        // 增量旋转配置
+        const ROTATION_Y_SENSITIVITY = Math.PI * 0.90;
+        const ROTATION_X_LIMIT = Math.PI * 0.22;
+        const ROTATION_DELTA_DEADZONE = 0.003;
+        const ROTATION_DELTA_MAX = 0.035;
+        const ROTATION_INPUT_SMOOTHING = 0.35;
+        const ROTATION_RENDER_SMOOTHING = 10.0;
+
+        const FOCUS_ENTER_FRAMES = 2;
+        const FOCUS_EXIT_FRAMES = 2;
+        const FIREWORK_ENTER_FRAMES = 2;
+
+        const SCATTER_EXTENSION_THRESHOLD = 1.45;
+        const FIREWORK_EXTENSION_THRESHOLD = 1.65;
+        const FIREWORK_MIN_FINGER_THRESHOLD = 1.25;
 
         let scene, camera, renderer, composer;
         let mainGroup;
@@ -549,12 +580,167 @@
         let caneTexture;
         let snowSystem;
         let fireworkSystem;
-        const decorations = [];
+        const textureCache = new Map();
+        let glowTextureCache = null;
         const debugInfo = document.getElementById('debug-info');
 
         // --- 新增：照片管理数据结构 ---
         let photoDataArray = []; // 存储所有照片的元数据 { id, url, texture, particle, isVisible }
         let photoIdCounter = 0;
+
+        const _candidateWorldPos = new THREE.Vector3();
+        const _candidateNdc = new THREE.Vector3();
+
+        function worldToScreen(worldPos) {
+            _candidateNdc.copy(worldPos).project(camera);
+            return { x: _candidateNdc.x, y: _candidateNdc.y, z: _candidateNdc.z };
+        }
+
+        function isCandidateInView(screenPos) {
+            return screenPos.z > -1
+                && screenPos.z < 1
+                && Math.abs(screenPos.x) <= CANDIDATE_VIEW_MARGIN
+                && Math.abs(screenPos.y) <= CANDIDATE_VIEW_MARGIN;
+        }
+
+        function getCandidateScore(screenPos) {
+            const horizontal = Math.abs(screenPos.x);
+            const vertical = Math.max(0, Math.abs(screenPos.y) - CANDIDATE_VERTICAL_DEADBAND);
+            return horizontal + vertical * CANDIDATE_VERTICAL_WEIGHT;
+        }
+
+        function getPhotoScreenMetrics(photoMesh) {
+            photoMesh.getWorldPosition(_candidateWorldPos);
+            const screenPos = worldToScreen(_candidateWorldPos);
+            return {
+                screenPos,
+                inView: isCandidateInView(screenPos),
+                score: getCandidateScore(screenPos)
+            };
+        }
+
+        function updateCandidatePhoto() {
+            let closest = null;
+            let minScore = Infinity;
+
+            particleSystem.forEach(p => {
+                if (p.type !== 'PHOTO') return;
+                if (p.visState !== 'VISIBLE') return;
+                if (!p.mesh.visible) return;
+
+                const metrics = getPhotoScreenMetrics(p.mesh);
+                if (!metrics.inView) return;
+
+                if (metrics.score < minScore) {
+                    minScore = metrics.score;
+                    closest = p.mesh;
+                }
+            });
+
+            if (closest === null) {
+                updateCandidateTarget(null);
+                return;
+            }
+
+            updateCandidateTarget(closest);
+        }
+
+        function updateCandidateTarget(newTarget, bypassDebounce = false) {
+            const now = performance.now();
+
+            if (newTarget === null) {
+                STATE.candidateTarget = null;
+                return;
+            }
+
+            if (STATE.candidateTarget === newTarget) {
+                return;
+            }
+
+            if (STATE.candidateTarget === null) {
+                bypassDebounce = true;
+            }
+
+            if (!bypassDebounce && STATE.candidateTarget) {
+                const oldMetrics = getPhotoScreenMetrics(STATE.candidateTarget);
+
+                if (!oldMetrics.inView) {
+                    bypassDebounce = true;
+                } else {
+                    if (now - lastCandidateSwitchTime < CANDIDATE_COOLDOWN) {
+                        return;
+                    }
+
+                    const newMetrics = getPhotoScreenMetrics(newTarget);
+                    const oldDist = oldMetrics.score;
+                    const newDist = newMetrics.score;
+
+                    if (newDist >= oldDist - CANDIDATE_SWITCH_THRESHOLD) {
+                        return;
+                    }
+                }
+            }
+
+            STATE.candidateTarget = newTarget;
+            lastCandidateSwitchTime = now;
+        }
+
+        function resetHandRotationTracking() {
+            STATE.hand.filteredX = STATE.hand.x || 0;
+            STATE.hand.lastRotateX = null;
+        }
+
+        function exitFocusMode() {
+            STATE.mode = 'SCATTER';
+            STATE.focusTarget = null;
+            focusGestureReleaseFrameCount = 0;
+            resetHandRotationTracking();
+        }
+
+        function updateRotationFromHand(currentHandX) {
+            if (STATE.hand.lastRotateX === null) {
+                STATE.hand.filteredX = currentHandX;
+                STATE.hand.lastRotateX = currentHandX;
+                return;
+            }
+
+            STATE.hand.filteredX = THREE.MathUtils.lerp(
+                STATE.hand.filteredX,
+                currentHandX,
+                ROTATION_INPUT_SMOOTHING
+            );
+
+            let deltaX = STATE.hand.filteredX - STATE.hand.lastRotateX;
+            STATE.hand.lastRotateX = STATE.hand.filteredX;
+
+            const absDeltaX = Math.abs(deltaX);
+            if (absDeltaX <= ROTATION_DELTA_DEADZONE) return;
+
+            deltaX = Math.sign(deltaX) * THREE.MathUtils.clamp(
+                absDeltaX - ROTATION_DELTA_DEADZONE,
+                0,
+                ROTATION_DELTA_MAX
+            );
+
+            STATE.rotation.targetY += deltaX * ROTATION_Y_SENSITIVITY;
+        }
+
+        function isVGesture(lm, handSize) {
+            const wrist = lm[0];
+            const distToWrist = point => Math.hypot(point.x - wrist.x, point.y - wrist.y);
+
+            const indexDist = distToWrist(lm[8]);
+            const middleDist = distToWrist(lm[12]);
+            const ringDist = distToWrist(lm[16]);
+            const pinkyDist = distToWrist(lm[20]);
+            const fingerSpread = Math.hypot(lm[8].x - lm[12].x, lm[8].y - lm[12].y);
+
+            return indexDist > handSize * 1.55
+                && middleDist > handSize * 1.60
+                && ringDist < handSize * 1.45
+                && pinkyDist < handSize * 1.35
+                && fingerSpread > handSize * 0.35;
+        }
 
         async function init() {
             console.log('🎄 [init] 初始化开始...');
@@ -567,8 +753,6 @@
             createTextures();
             createParticles();
             createDust();
-            createLanterns();
-            createFuCharacters();
             createSnow();
             fireworkSystem = new FireworkSystem(scene);
 
@@ -725,6 +909,7 @@
 
             camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 2, CONFIG.camera.z);
+            camera.updateMatrixWorld(true);
 
             // 启用 alpha: true 以便未来如果有需要可以透过背景
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -798,11 +983,9 @@
             // 🔧 修复：提高 Bloom 阈值，避免影响照片
             // 原值 0.65 会让所有稍亮的物体都发光，包括照片
             // 新值 0.95 只让非常亮的物体（如金色装饰）发光
-            bloomPass.threshold = 0.95;
-            
-            // 🔧 修复：降低 Bloom 强度，减少泛光溢出
-            bloomPass.strength = 0.3;  // 从 0.5 降至 0.3
-            bloomPass.radius = 0.3;    // 从 0.4 降至 0.3
+            bloomPass.threshold = 0.85;
+            bloomPass.strength = 0.45;
+            bloomPass.radius = 0.35;
 
             composer = new EffectComposer(renderer);
             composer.addPass(renderScene);
@@ -909,97 +1092,279 @@
             snowSystem.geometry.attributes.position.needsUpdate = true;
         }
 
+        const FIREWORK_VS = `
+            attribute vec3 aColor; attribute float aAlpha; attribute float aSize; attribute float aPhase;
+            varying vec3 vColor; varying float vAlpha; varying float vPhase;
+            void main() {
+                vColor = aColor; vAlpha = aAlpha; vPhase = aPhase;
+                vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                gl_PointSize = aSize * (600.0 / max(-mv.z, 0.001));
+                gl_Position = projectionMatrix * mv;
+            }`;
+        const FIREWORK_FS = `
+            precision highp float;
+            uniform float uTime;
+            varying vec3 vColor; varying float vAlpha; varying float vPhase;
+            void main() {
+                vec2 pc = gl_PointCoord - 0.5;
+                float r2 = dot(pc, pc);
+                if (r2 > 0.25) discard;
+                float r = sqrt(r2) * 2.0;
+                float softGlow = pow(1.0 - r, 3.0) * 0.8;
+                float core = pow(1.0 - r, 12.0) * 1.0;
+                float intensity = min(1.0, (softGlow + core)) * vAlpha;
+                if (vPhase >= 0.0) {
+                    float blink = step(0.1, sin(uTime * 45.0 + vPhase * 62.8));
+                    intensity *= mix(0.3, 1.0, blink);
+                }
+                gl_FragColor = vec4(vColor * 1.4, intensity);
+            }`;
+
         class Explosion {
-            constructor(position, color, type, sceneRef) {
+            static TYPE_TABLE = {
+                PEONY:         { count: 500,  gravity: 4.0, drag: 0.965, speedMin: 12, speedRange: 24, life: 3.0, baseSize: 0.80, sparkle: 0.05, trailLife: 0.55 },
+                CHRYSANTHEMUM: { count: 600,  gravity: 3.0, drag: 0.955, speedMin: 10, speedRange: 20, life: 3.8, baseSize: 0.70, sparkle: 0.40, trailLife: 1.20 },
+                WILLOW:        { count: 400,  gravity: 1.2, drag: 0.945, speedMin: 6,  speedRange: 14, life: 6.5, baseSize: 0.60, sparkle: 1.00, trailLife: 2.20 },
+                PALM:          { count: 300,  gravity: 5.5, drag: 0.930, speedMin: 15, speedRange: 20, life: 3.8, baseSize: 0.85, sparkle: 0.10, trailLife: 1.30 },
+                CROSSETTE:     { count: 380,  gravity: 4.0, drag: 0.965, speedMin: 12, speedRange: 24, life: 2.6, baseSize: 0.82, sparkle: 0.10, trailLife: 0.65 },
+                STROBE:        { count: 450,  gravity: 2.2, drag: 0.975, speedMin: 10, speedRange: 20, life: 4.8, baseSize: 0.72, sparkle: 1.00, trailLife: 0.60 },
+                RING:          { count: 380,  gravity: 2.5, drag: 0.975, speedMin: 14, speedRange: 14, life: 3.2, baseSize: 0.75, sparkle: 0.10, trailLife: 0.50 },
+                PISTIL:        { count: 600,  gravity: 4.0, drag: 0.965, speedMin: 12, speedRange: 24, life: 3.2, baseSize: 0.80, sparkle: 0.05, trailLife: 0.60 },
+            };
+            static SUB_CONFIG = { count: 100, gravity: 4.0, drag: 0.96, speedMin: 4, speedRange: 5, life: 1.2, baseSize: 0.55, sparkle: 0.10, trailLife: 0.30 };
+            static TRAIL_MAX = 4000;
+
+            constructor(position, color, type, sceneRef, isSub = false) {
                 this.position = position.clone();
-                this.color = color;
                 this.type = type;
                 this.sceneRef = sceneRef;
-                this.life = 2.0;
+                this.isSub = isSub;
+                this.cfg = isSub ? Explosion.SUB_CONFIG : (Explosion.TYPE_TABLE[type] || Explosion.TYPE_TABLE.PEONY);
+                this.maxLife = this.cfg.life;
+                this.life = this.maxLife;
                 this.alive = true;
-                this.particles = [];
-                this.createParticles();
+                this.secondStageTriggered = false;
+                this.subExplosions = [];
+                this._initParticles();
+                if (!isSub && this.cfg.trailLife > 0) this._initTrails();
             }
 
-            createParticles() {
-                const counts = { PEONY: 150, WILLOW: 100, CHRYSANTHEMUM: 180, HEART: 120, DOUBLE: 200, RING: 100 };
-                const count = counts[this.type] || 150;
-                const positions = new Float32Array(count * 3);
-                const velocities = [];
+            _initParticles() {
+                const cfg = this.cfg;
+                const count = cfg.count;
+                this.count = count;
+                const pos = new Float32Array(count * 3);
+                const col = new Float32Array(count * 3);
+                const alp = new Float32Array(count);
+                const siz = new Float32Array(count);
+                const pha = new Float32Array(count);
+                this.velocities = [];
+                this.baseSizes = new Float32Array(count);
+
+                const palette = CONFIG.firework.colors;
+                const colorCount = this.isSub ? 1 : THREE.MathUtils.randInt(CONFIG.firework.palettePerExplosionMin, CONFIG.firework.palettePerExplosionMax);
+                const selectedColors = [];
+                for (let c = 0; c < colorCount; c++) {
+                    selectedColors.push(new THREE.Color(palette[Math.floor(Math.random() * palette.length)]));
+                }
+                const pistilColor = (this.type === 'PISTIL')
+                    ? new THREE.Color(palette[Math.floor(Math.random() * palette.length)])
+                    : null;
+                const pistilStart = (this.type === 'PISTIL') ? Math.floor(count * 0.7) : count;
 
                 for (let i = 0; i < count; i++) {
-                    positions[i * 3] = this.position.x;
-                    positions[i * 3 + 1] = this.position.y;
-                    positions[i * 3 + 2] = this.position.z;
-                    const vel = this.getVelocity(i, count);
-                    velocities.push(vel);
+                    pos[i * 3] = this.position.x;
+                    pos[i * 3 + 1] = this.position.y;
+                    pos[i * 3 + 2] = this.position.z;
+
+                    const isPistilCore = i >= pistilStart;
+                    const speed = isPistilCore
+                        ? (cfg.speedMin * 0.45 + Math.random() * cfg.speedRange * 0.3)
+                        : (cfg.speedMin + Math.random() * cfg.speedRange);
+                    const dir = this._getDirection(i, count);
+                    this.velocities.push(dir.normalize().multiplyScalar(speed));
+
+                    const baseCol = isPistilCore ? pistilColor : selectedColors[i % colorCount];
+                    const hsl = {};
+                    baseCol.getHSL(hsl);
+                    const h = (hsl.h + (Math.random() - 0.5) * (30 / 360) + 1) % 1;
+                    const s = THREE.MathUtils.clamp(hsl.s + (Math.random() - 0.5) * 0.15, 0.6, 1);
+                    const l = 0.55 + Math.random() * 0.25;
+                    const pc = new THREE.Color().setHSL(h, s, l);
+                    col[i * 3] = pc.r; col[i * 3 + 1] = pc.g; col[i * 3 + 2] = pc.b;
+
+                    alp[i] = 1.0;
+                    const sizeJitter = 0.7 + Math.random() * 0.6;
+                    this.baseSizes[i] = cfg.baseSize * sizeJitter * (isPistilCore ? 0.85 : 1.0);
+                    siz[i] = this.baseSizes[i];
+                    pha[i] = Math.random() < cfg.sparkle ? Math.random() * Math.PI * 2 : -1.0;
                 }
 
-                const geometry = new THREE.BufferGeometry();
-                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                geo.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+                geo.setAttribute('aAlpha', new THREE.BufferAttribute(alp, 1));
+                geo.setAttribute('aSize', new THREE.BufferAttribute(siz, 1));
+                geo.setAttribute('aPhase', new THREE.BufferAttribute(pha, 1));
+                geo.attributes.position.setUsage(THREE.DynamicDrawUsage);
+                geo.attributes.aAlpha.setUsage(THREE.DynamicDrawUsage);
+                geo.attributes.aSize.setUsage(THREE.DynamicDrawUsage);
 
-                const material = new THREE.PointsMaterial({
-                    color: this.color,
-                    size: 0.25,
+                this.material = new THREE.ShaderMaterial({
+                    uniforms: { uTime: { value: 0 } },
+                    vertexShader: FIREWORK_VS,
+                    fragmentShader: FIREWORK_FS,
                     transparent: true,
-                    opacity: 1,
                     blending: THREE.AdditiveBlending,
                     depthWrite: false
                 });
 
-                this.points = new THREE.Points(geometry, material);
+                this.points = new THREE.Points(geo, this.material);
                 this.sceneRef.add(this.points);
-                this.velocities = velocities;
             }
 
-            getVelocity(i, count) {
-                const speed = 4 + Math.random() * 4;
-                let dir;
-                if (this.type === 'HEART') {
-                    const t = (i / count) * Math.PI * 2;
-                    const x = 16 * Math.pow(Math.sin(t), 3);
-                    const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
-                    dir = new THREE.Vector3(x * 0.06, y * 0.06, THREE.MathUtils.randFloatSpread(0.5)).normalize();
-                } else if (this.type === 'RING') {
-                    const angle = (i / count) * Math.PI * 2;
-                    dir = new THREE.Vector3(Math.cos(angle), 0.1, Math.sin(angle)).normalize();
-                } else if (this.type === 'WILLOW') {
-                    dir = new THREE.Vector3().randomDirection();
-                    dir.y = Math.abs(dir.y) * 0.3;
-                } else {
-                    dir = new THREE.Vector3().randomDirection();
+            _initTrails() {
+                const n = Explosion.TRAIL_MAX;
+                this.trailIdx = 0;
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+                geo.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+                geo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array(n), 1));
+                geo.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(n), 1));
+                geo.setAttribute('aPhase', new THREE.BufferAttribute(new Float32Array(n).fill(-1), 1));
+                geo.attributes.position.setUsage(THREE.DynamicDrawUsage);
+                geo.attributes.aColor.setUsage(THREE.DynamicDrawUsage);
+                geo.attributes.aAlpha.setUsage(THREE.DynamicDrawUsage);
+                geo.attributes.aSize.setUsage(THREE.DynamicDrawUsage);
+                this.trailPoints = new THREE.Points(geo, this.material);
+                this.sceneRef.add(this.trailPoints);
+            }
+
+            _getDirection(i, count) {
+                const d = new THREE.Vector3().randomDirection();
+                switch (this.type) {
+                    case 'RING': {
+                        const a = (i / count) * Math.PI * 2;
+                        return new THREE.Vector3(Math.cos(a), THREE.MathUtils.randFloatSpread(0.08), Math.sin(a));
+                    }
+                    case 'PALM': {
+                        d.y = Math.abs(d.y) * 0.4 + 0.55;
+                        return d;
+                    }
+                    case 'WILLOW': {
+                        d.y = Math.abs(d.y) * 0.25 + 0.05;
+                        return d;
+                    }
+                    case 'CROSSETTE': {
+                        const arms = 8;
+                        const arm = i % arms;
+                        const armAngle = (arm / arms) * Math.PI * 2;
+                        const lift = THREE.MathUtils.randFloatSpread(0.25);
+                        return new THREE.Vector3(Math.cos(armAngle), lift, Math.sin(armAngle));
+                    }
+                    default:
+                        return d;
                 }
-                return dir.multiplyScalar(speed);
             }
 
             update(dt) {
                 if (!this.alive) return;
                 this.life -= dt;
-                if (this.life <= 0) { this.alive = false; return; }
+                const progress = Math.max(0, this.life / this.maxLife);
 
-                const positions = this.points.geometry.attributes.position.array;
-                const gravity = this.type === 'WILLOW' ? 8 : 5;
+                if (this.life <= 0 && this.subExplosions.every(se => !se.alive)) {
+                    this.alive = false;
+                    return;
+                }
 
-                for (let i = 0; i < this.velocities.length; i++) {
-                    this.velocities[i].y -= gravity * dt;
-                    this.velocities[i].multiplyScalar(0.98);
-                    positions[i * 3] += this.velocities[i].x * dt;
-                    positions[i * 3 + 1] += this.velocities[i].y * dt;
-                    positions[i * 3 + 2] += this.velocities[i].z * dt;
+                this.material.uniforms.uTime.value += dt;
+                const pos = this.points.geometry.attributes.position.array;
+                const alp = this.points.geometry.attributes.aAlpha.array;
+                const siz = this.points.geometry.attributes.aSize.array;
+                const gravity = this.cfg.gravity;
+                const drag = this.cfg.drag;
+
+                for (let i = 0; i < this.count; i++) {
+                    const v = this.velocities[i];
+                    v.y -= gravity * dt;
+                    v.x += THREE.MathUtils.randFloatSpread(0.2);
+                    v.z += THREE.MathUtils.randFloatSpread(0.2);
+                    v.multiplyScalar(drag);
+                    pos[i * 3] += v.x * dt;
+                    pos[i * 3 + 1] += v.y * dt;
+                    pos[i * 3 + 2] += v.z * dt;
+                    alp[i] = Math.pow(progress, 1.5);
+                    siz[i] = this.baseSizes[i] * (0.6 + 0.4 * progress);
                 }
 
                 this.points.geometry.attributes.position.needsUpdate = true;
-                this.points.material.opacity = Math.max(this.life / 2.0, 0);
+                this.points.geometry.attributes.aAlpha.needsUpdate = true;
+                this.points.geometry.attributes.aSize.needsUpdate = true;
+
+                if (this.trailPoints && progress > 0) this._updateTrails(dt, pos, alp, siz);
+
+                if (this.type === 'CROSSETTE' && !this.secondStageTriggered && (1 - progress) >= 0.45) {
+                    this.secondStageTriggered = true;
+                    const palette = CONFIG.firework.colors;
+                    const arms = 8;
+                    for (let k = 0; k < arms; k++) {
+                        const ri = Math.floor((k / arms) * this.count + Math.random() * (this.count / arms));
+                        const p = new THREE.Vector3(pos[ri * 3], pos[ri * 3 + 1], pos[ri * 3 + 2]);
+                        this.subExplosions.push(new Explosion(p, palette[Math.floor(Math.random() * palette.length)], 'PEONY', this.sceneRef, true));
+                    }
+                }
+
+                this.subExplosions.forEach(se => se.update(dt));
+            }
+
+            _updateTrails(dt, pos, alp, siz) {
+                const tGeo = this.trailPoints.geometry;
+                const tPos = tGeo.attributes.position.array;
+                const tCol = tGeo.attributes.aColor.array;
+                const tAlp = tGeo.attributes.aAlpha.array;
+                const tSiz = tGeo.attributes.aSize.array;
+                const pCol = this.points.geometry.attributes.aColor.array;
+                const n = Explosion.TRAIL_MAX;
+                const trailLife = this.cfg.trailLife;
+
+                for (let i = 0; i < n; i++) tAlp[i] = Math.max(0, tAlp[i] - dt / trailLife);
+
+                for (let i = 0; i < this.count; i += 4) {
+                    if (alp[i] <= 0.05) continue;
+                    const idx = this.trailIdx;
+                    tPos[idx * 3] = pos[i * 3];
+                    tPos[idx * 3 + 1] = pos[i * 3 + 1];
+                    tPos[idx * 3 + 2] = pos[i * 3 + 2];
+                    tCol[idx * 3] = pCol[i * 3] * 0.7;
+                    tCol[idx * 3 + 1] = pCol[i * 3 + 1] * 0.7;
+                    tCol[idx * 3 + 2] = pCol[i * 3 + 2] * 0.7;
+                    tAlp[idx] = alp[i] * 0.7;
+                    tSiz[idx] = siz[i] * 1.2;
+                    this.trailIdx = (this.trailIdx + 1) % n;
+                }
+
+                tGeo.attributes.position.needsUpdate = true;
+                tGeo.attributes.aColor.needsUpdate = true;
+                tGeo.attributes.aAlpha.needsUpdate = true;
+                tGeo.attributes.aSize.needsUpdate = true;
             }
 
             dispose(sceneRef) {
                 sceneRef.remove(this.points);
                 this.points.geometry.dispose();
-                this.points.material.dispose();
+                this.material.dispose();
+                if (this.trailPoints) {
+                    sceneRef.remove(this.trailPoints);
+                    this.trailPoints.geometry.dispose();
+                }
+                this.subExplosions.forEach(se => se.dispose(sceneRef));
             }
         }
 
         class Rocket {
+            static TRAIL_LEN = 80;
+            static SPARK_COUNT = 25;
+
             constructor(startPos, targetHeight, color, type, sceneRef) {
                 this.position = startPos.clone();
                 this.targetHeight = targetHeight;
@@ -1007,36 +1372,132 @@
                 this.type = type;
                 this.sceneRef = sceneRef;
                 this.alive = true;
-                this.velocity = new THREE.Vector3(0, 15, 0);
+                this.velocity = new THREE.Vector3(
+                    THREE.MathUtils.randFloatSpread(1.5),
+                    THREE.MathUtils.randFloat(18, 24),
+                    THREE.MathUtils.randFloatSpread(1.5)
+                );
 
-                const geo = new THREE.SphereGeometry(0.15, 8, 8);
-                const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1 });
-                this.mesh = new THREE.Mesh(geo, mat);
-                this.mesh.position.copy(this.position);
-                sceneRef.add(this.mesh);
+                const sparkCount = Rocket.SPARK_COUNT;
+                const sparkGeo = new THREE.BufferGeometry();
+                const sparkPos = new Float32Array(sparkCount * 3);
+                const sparkCol = new Float32Array(sparkCount * 3);
+                const sparkAlp = new Float32Array(sparkCount);
+                const sparkSiz = new Float32Array(sparkCount);
+                const sparkPha = new Float32Array(sparkCount);
+                this.sparkVelocities = [];
 
-                this.trailPositions = [];
+                const c = new THREE.Color(color);
+                for (let i = 0; i < sparkCount; i++) {
+                    sparkPos[i * 3] = this.position.x;
+                    sparkPos[i * 3 + 1] = this.position.y;
+                    sparkPos[i * 3 + 2] = this.position.z;
+                    sparkCol[i * 3] = c.r;
+                    sparkCol[i * 3 + 1] = c.g;
+                    sparkCol[i * 3 + 2] = c.b;
+                    sparkAlp[i] = 0.6 + Math.random() * 0.3;
+                    sparkSiz[i] = 0.25 + Math.random() * 0.3;
+                    sparkPha[i] = Math.random() * Math.PI * 2;
+                    this.sparkVelocities.push(new THREE.Vector3(
+                        THREE.MathUtils.randFloatSpread(2),
+                        THREE.MathUtils.randFloatSpread(2) - 1.5,
+                        THREE.MathUtils.randFloatSpread(2)
+                    ));
+                }
+
+                sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+                sparkGeo.setAttribute('aColor', new THREE.BufferAttribute(sparkCol, 3));
+                sparkGeo.setAttribute('aAlpha', new THREE.BufferAttribute(sparkAlp, 1));
+                sparkGeo.setAttribute('aSize', new THREE.BufferAttribute(sparkSiz, 1));
+                sparkGeo.setAttribute('aPhase', new THREE.BufferAttribute(sparkPha, 1));
+                sparkGeo.attributes.position.setUsage(THREE.DynamicDrawUsage);
+                sparkGeo.attributes.aAlpha.setUsage(THREE.DynamicDrawUsage);
+
+                this.sparkMaterial = new THREE.ShaderMaterial({
+                    uniforms: { uTime: { value: 0 } },
+                    vertexShader: FIREWORK_VS,
+                    fragmentShader: FIREWORK_FS,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+                this.sparks = new THREE.Points(sparkGeo, this.sparkMaterial);
+                sceneRef.add(this.sparks);
+
+                this.trailIdx = 0;
+                this.trailBuf = new Float32Array(Rocket.TRAIL_LEN * 3);
+                this.trailColBuf = new Float32Array(Rocket.TRAIL_LEN * 3);
+                this.trailAlpBuf = new Float32Array(Rocket.TRAIL_LEN);
+                this.trailSizBuf = new Float32Array(Rocket.TRAIL_LEN);
+                this.trailPhaBuf = new Float32Array(Rocket.TRAIL_LEN).fill(-1);
+                for (let i = 0; i < Rocket.TRAIL_LEN; i++) {
+                    this.trailColBuf[i * 3] = c.r;
+                    this.trailColBuf[i * 3 + 1] = c.g;
+                    this.trailColBuf[i * 3 + 2] = c.b;
+                    this.trailSizBuf[i] = 0.5 + (i / Rocket.TRAIL_LEN) * 0.3;
+                }
+
                 this.trailGeometry = new THREE.BufferGeometry();
-                this.trailMaterial = new THREE.PointsMaterial({
-                    color: color, size: 0.1, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending
+                this.trailGeometry.setAttribute('position', new THREE.BufferAttribute(this.trailBuf, 3));
+                this.trailGeometry.setAttribute('aColor', new THREE.BufferAttribute(this.trailColBuf, 3));
+                this.trailGeometry.setAttribute('aAlpha', new THREE.BufferAttribute(this.trailAlpBuf, 1));
+                this.trailGeometry.setAttribute('aSize', new THREE.BufferAttribute(this.trailSizBuf, 1));
+                this.trailGeometry.setAttribute('aPhase', new THREE.BufferAttribute(this.trailPhaBuf, 1));
+                this.trailGeometry.attributes.position.setUsage(THREE.DynamicDrawUsage);
+                this.trailGeometry.attributes.aAlpha.setUsage(THREE.DynamicDrawUsage);
+                this.trailGeometry.setDrawRange(0, 0);
+
+                this.trailMaterial = new THREE.ShaderMaterial({
+                    uniforms: { uTime: { value: 0 } },
+                    vertexShader: FIREWORK_VS,
+                    fragmentShader: FIREWORK_FS,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
                 });
                 this.trail = new THREE.Points(this.trailGeometry, this.trailMaterial);
                 sceneRef.add(this.trail);
             }
 
             update(dt) {
-                this.position.add(this.velocity.clone().multiplyScalar(dt));
-                this.mesh.position.copy(this.position);
-                this.trailPositions.push(this.position.x, this.position.y, this.position.z);
-                if (this.trailPositions.length > 60) this.trailPositions.splice(0, 3);
-                this.trailGeometry.setAttribute('position', new THREE.Float32BufferAttribute(this.trailPositions, 3));
+                this.position.addScaledVector(this.velocity, dt);
+
+                this.sparkMaterial.uniforms.uTime.value += dt;
+                this.trailMaterial.uniforms.uTime.value += dt;
+
+                const sPos = this.sparks.geometry.attributes.position.array;
+                const sAlp = this.sparks.geometry.attributes.aAlpha.array;
+                for (let i = 0; i < Rocket.SPARK_COUNT; i++) {
+                    const sv = this.sparkVelocities[i];
+                    sPos[i * 3] += sv.x * dt;
+                    sPos[i * 3 + 1] += sv.y * dt;
+                    sPos[i * 3 + 2] += sv.z * dt;
+                    sAlp[i] = Math.max(0, sAlp[i] - dt * 2.0);
+                }
+                this.sparks.geometry.attributes.position.needsUpdate = true;
+                this.sparks.geometry.attributes.aAlpha.needsUpdate = true;
+
+                const idx = this.trailIdx % Rocket.TRAIL_LEN;
+                this.trailBuf[idx * 3] = this.position.x + THREE.MathUtils.randFloatSpread(0.1);
+                this.trailBuf[idx * 3 + 1] = this.position.y;
+                this.trailBuf[idx * 3 + 2] = this.position.z + THREE.MathUtils.randFloatSpread(0.1);
+                this.trailAlpBuf[idx] = 0.8;
+                this.trailIdx++;
+
+                for (let i = 0; i < Rocket.TRAIL_LEN; i++) {
+                    this.trailAlpBuf[i] = Math.max(0, this.trailAlpBuf[i] - dt * 1.5);
+                }
+
+                this.trailGeometry.attributes.position.needsUpdate = true;
+                this.trailGeometry.attributes.aAlpha.needsUpdate = true;
+                this.trailGeometry.setDrawRange(0, Math.min(this.trailIdx, Rocket.TRAIL_LEN));
             }
 
             dispose(sceneRef) {
-                sceneRef.remove(this.mesh);
+                sceneRef.remove(this.sparks);
                 sceneRef.remove(this.trail);
-                this.mesh.geometry.dispose();
-                this.mesh.material.dispose();
+                this.sparks.geometry.dispose();
+                this.sparkMaterial.dispose();
                 this.trailGeometry.dispose();
                 this.trailMaterial.dispose();
             }
@@ -1048,14 +1509,21 @@
                 this.rockets = [];
                 this.explosions = [];
                 this.lastLaunchTime = 0;
+                this.comboQueue = [];
+                this.nextComboTime = 0;
             }
 
             update(dt, currentTime, isActive) {
                 if (isActive && this.explosions.length < CONFIG.firework.maxExplosions) {
-                    const interval = THREE.MathUtils.randInt(CONFIG.firework.launchIntervalMin, CONFIG.firework.launchIntervalMax);
-                    if (currentTime - this.lastLaunchTime > interval) {
-                        this.launchRocket();
-                        this.lastLaunchTime = currentTime;
+                    if (currentTime >= this.nextComboTime) {
+                        const isCombo = Math.random() < 0.35;
+                        if (isCombo) {
+                            this.launchCombo();
+                        } else {
+                            this.launchRocket();
+                        }
+                        const interval = THREE.MathUtils.randInt(CONFIG.firework.launchIntervalMin, CONFIG.firework.launchIntervalMax);
+                        this.nextComboTime = currentTime + interval;
                     }
                 }
 
@@ -1088,6 +1556,67 @@
                 this.rockets.push(new Rocket(startPos, targetHeight, color, type, this.sceneRef));
             }
 
+            launchCombo() {
+                const palette = CONFIG.firework.colors;
+                const types = CONFIG.firework.types;
+                const comboType = Math.floor(Math.random() * 4);
+
+                switch (comboType) {
+                    case 0: {
+                        const count = THREE.MathUtils.randInt(3, 5);
+                        const centerX = THREE.MathUtils.randFloatSpread(12);
+                        for (let i = 0; i < count; i++) {
+                            const x = centerX + (i - (count - 1) / 2) * THREE.MathUtils.randFloat(2, 4);
+                            const startPos = new THREE.Vector3(x, -15, THREE.MathUtils.randFloatSpread(5));
+                            const targetHeight = THREE.MathUtils.randFloat(10, 18);
+                            const color = palette[Math.floor(Math.random() * palette.length)];
+                            const type = types[Math.floor(Math.random() * types.length)];
+                            this.rockets.push(new Rocket(startPos, targetHeight, color, type, this.sceneRef));
+                        }
+                        break;
+                    }
+                    case 1: {
+                        const color1 = palette[Math.floor(Math.random() * palette.length)];
+                        const color2 = palette[Math.floor(Math.random() * palette.length)];
+                        for (let i = 0; i < 3; i++) {
+                            const x = THREE.MathUtils.randFloatSpread(16);
+                            const startPos = new THREE.Vector3(x, -15, THREE.MathUtils.randFloatSpread(5));
+                            const targetHeight = THREE.MathUtils.randFloat(10, 16);
+                            this.rockets.push(new Rocket(startPos, targetHeight, color1, 'WILLOW', this.sceneRef));
+                        }
+                        for (let i = 0; i < 2; i++) {
+                            const x = THREE.MathUtils.randFloatSpread(16);
+                            const startPos = new THREE.Vector3(x, -15, THREE.MathUtils.randFloatSpread(5));
+                            const targetHeight = THREE.MathUtils.randFloat(14, 20);
+                            this.rockets.push(new Rocket(startPos, targetHeight, color2, 'PEONY', this.sceneRef));
+                        }
+                        break;
+                    }
+                    case 2: {
+                        const sharedColor = palette[Math.floor(Math.random() * palette.length)];
+                        const heights = [8, 14, 20];
+                        for (let i = 0; i < 3; i++) {
+                            const x = THREE.MathUtils.randFloatSpread(8);
+                            const startPos = new THREE.Vector3(x, -15, THREE.MathUtils.randFloatSpread(3));
+                            this.rockets.push(new Rocket(startPos, heights[i], sharedColor, 'CHRYSANTHEMUM', this.sceneRef));
+                        }
+                        break;
+                    }
+                    case 3: {
+                        for (let i = 0; i < 4; i++) {
+                            const angle = (i / 4) * Math.PI * 2;
+                            const radius = THREE.MathUtils.randFloat(5, 10);
+                            const startPos = new THREE.Vector3(Math.cos(angle) * radius, -15, Math.sin(angle) * radius);
+                            const targetHeight = THREE.MathUtils.randFloat(12, 20);
+                            const color = palette[Math.floor(Math.random() * palette.length)];
+                            const type = types[Math.floor(Math.random() * types.length)];
+                            this.rockets.push(new Rocket(startPos, targetHeight, color, type, this.sceneRef));
+                        }
+                        break;
+                    }
+                }
+            }
+
             createExplosion(rocket) {
                 this.explosions.push(new Explosion(rocket.position, rocket.color, rocket.type, this.sceneRef));
             }
@@ -1100,15 +1629,18 @@
             }
         }
 
+        const _pv3 = new THREE.Vector3();
         class Particle {
             constructor(mesh, type, isDust = false) {
                 this.mesh = mesh;
                 this.type = type;
                 this.isDust = isDust;
-                
+
                 this.posTree = new THREE.Vector3();
                 this.posScatter = new THREE.Vector3();
-                this.baseScale = mesh.scale.x; 
+                this.baseScale = mesh.scale.x;
+                this.visState = 'VISIBLE';
+                this.prevMode = null;
 
                 const speedMult = (type === 'PHOTO') ? 0.3 : 2.0;
 
@@ -1159,6 +1691,37 @@
             }
 // wp/electronicminer wish you a Merry Christmas!
             update(dt, mode, focusTargetMesh) {
+                const entered = mode === 'FIREWORK' && this.prevMode !== 'FIREWORK';
+                const exited = mode !== 'FIREWORK' && this.prevMode === 'FIREWORK';
+                this.prevMode = mode;
+
+                if (entered) this.visState = 'FADING_OUT';
+                if (exited) { this.visState = 'FADING_IN'; this.mesh.visible = true; }
+
+                if (this.visState === 'HIDDEN') return;
+
+                const _v3 = _pv3;
+                const fadeLerp = Math.min(1, 8 * dt);
+                if (this.visState === 'FADING_OUT') {
+                    this.mesh.scale.lerp(_v3.set(0, 0, 0), fadeLerp);
+                    if (this.mesh.scale.x < 0.01) {
+                        this.mesh.scale.set(0, 0, 0);
+                        this.mesh.visible = false;
+                        this.visState = 'HIDDEN';
+                    }
+                    return;
+                }
+
+                if (this.visState === 'FADING_IN') {
+                    const bs = this.baseScale;
+                    this.mesh.scale.lerp(_v3.set(bs, bs, bs), fadeLerp);
+                    if (Math.abs(this.mesh.scale.x - bs) < 0.02) {
+                        this.mesh.scale.set(bs, bs, bs);
+                        this.visState = 'VISIBLE';
+                    }
+                    return;
+                }
+
                 let target = this.posScatter;
 
                 if (mode === 'FOCUS') {
@@ -1172,7 +1735,7 @@
                 const lerpSpeed = (mode === 'FOCUS' && this.mesh === focusTargetMesh) ? 5.0 : 2.0;
                 this.mesh.position.lerp(target, lerpSpeed * dt);
 
-                if (mode === 'SCATTER' || mode === 'FIREWORK') {
+                if (mode === 'SCATTER') {
                     this.mesh.rotation.x += this.spinSpeed.x * dt;
                     this.mesh.rotation.y += this.spinSpeed.y * dt;
                     this.mesh.rotation.z += this.spinSpeed.z * dt;
@@ -1185,14 +1748,15 @@
                 let s = this.baseScale;
                 if (this.isDust) {
                     s = this.baseScale * (0.8 + 0.4 * Math.sin(clock.elapsedTime * 4 + this.mesh.id));
-                } else if ((mode === 'SCATTER' || mode === 'FIREWORK') && this.type === 'PHOTO') {
+                } else if (mode === 'SCATTER' && this.type === 'PHOTO') {
                     s = this.baseScale * 2.5;
                 } else if (mode === 'FOCUS') {
                     if (this.mesh === focusTargetMesh) s = 4.5;
                     else s = this.baseScale * 0.8;
                 }
 
-                this.mesh.scale.lerp(new THREE.Vector3(s,s,s), 4*dt);
+                const lerpAlpha = Math.min(1, dt / 0.2);
+                this.mesh.scale.lerp(_v3.set(s, s, s), lerpAlpha);
             }
         }
 
@@ -1297,111 +1861,6 @@
             }
         }
 
-        function createLanterns() {
-            const positions = [
-                new THREE.Vector3(-12, 8, -5),
-                new THREE.Vector3(12, 8, -5)
-            ];
-
-            positions.forEach(pos => {
-                const lantern = createLantern();
-                lantern.position.copy(pos);
-                lantern.userData.baseY = pos.y;
-                lantern.userData.floatOffset = Math.random() * Math.PI * 2;
-                scene.add(lantern);
-                decorations.push(lantern);
-            });
-        }
-
-        function createLantern() {
-            const group = new THREE.Group();
-            const bodyGeo = new THREE.CylinderGeometry(0.6, 0.6, 1.2, 16);
-            const bodyMat = new THREE.MeshStandardMaterial({
-                color: CONFIG.colors.chineseRed,
-                emissive: 0x660000,
-                emissiveIntensity: 0.4
-            });
-            const body = new THREE.Mesh(bodyGeo, bodyMat);
-            group.add(body);
-
-            const ringGeo = new THREE.TorusGeometry(0.65, 0.08, 8, 16);
-            const ringMat = new THREE.MeshStandardMaterial({
-                color: CONFIG.colors.fuGold,
-                metalness: 0.8,
-                roughness: 0.2
-            });
-            const topRing = new THREE.Mesh(ringGeo, ringMat);
-            topRing.rotation.x = Math.PI / 2;
-            topRing.position.y = 0.6;
-            group.add(topRing);
-
-            const bottomRing = topRing.clone();
-            bottomRing.position.y = -0.6;
-            group.add(bottomRing);
-
-            const tasselGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.8, 8);
-            const tasselMat = new THREE.MeshBasicMaterial({ color: CONFIG.colors.fuGold });
-            for (let i = 0; i < 8; i++) {
-                const tassel = new THREE.Mesh(tasselGeo, tasselMat);
-                const angle = (i / 8) * Math.PI * 2;
-                tassel.position.set(Math.cos(angle) * 0.3, -1.0, Math.sin(angle) * 0.3);
-                group.add(tassel);
-            }
-            return group;
-        }
-
-        function createFuCharacters() {
-            const positions = [
-                new THREE.Vector3(-10, -6, -3),
-                new THREE.Vector3(10, -6, -3)
-            ];
-
-            const canvas = document.createElement('canvas');
-            canvas.width = 256;
-            canvas.height = 256;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#ff2d2d';
-            ctx.fillRect(0, 0, 256, 256);
-            ctx.strokeStyle = '#ffd700';
-            ctx.lineWidth = 8;
-            ctx.strokeRect(10, 10, 236, 236);
-            ctx.fillStyle = '#ffd700';
-            ctx.font = 'bold 180px serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('福', 128, 138);
-
-            const texture = new THREE.CanvasTexture(canvas);
-
-            positions.forEach(pos => {
-                const geo = new THREE.PlaneGeometry(2, 2);
-                const mat = new THREE.MeshBasicMaterial({
-                    map: texture,
-                    side: THREE.DoubleSide,
-                    transparent: true
-                });
-                const fu = new THREE.Mesh(geo, mat);
-                fu.position.copy(pos);
-                fu.rotation.z = Math.PI;
-                fu.userData.baseRotation = Math.PI;
-                fu.userData.rotateOffset = Math.random() * Math.PI * 2;
-                scene.add(fu);
-                decorations.push(fu);
-            });
-        }
-
-        function updateDecorations(dt) {
-            const time = clock.elapsedTime;
-            decorations.forEach(dec => {
-                if (dec.userData.baseY !== undefined) {
-                    dec.position.y = dec.userData.baseY + Math.sin(time * 0.5 + dec.userData.floatOffset) * 0.3;
-                }
-                if (dec.userData.baseRotation !== undefined) {
-                    dec.rotation.z = dec.userData.baseRotation + Math.sin(time * 0.3 + dec.userData.rotateOffset) * 0.1;
-                }
-            });
-        }
-
         function addPhotoToScene(texture, sourceUrl = null) {
             let width = 1.2;
             let height = 1.2;
@@ -1433,11 +1892,12 @@
                 roughness: 0.2,
                 side: THREE.DoubleSide,
                 emissive: 0x443300,
-                
+
                 // 🔧 修复：降低边框自发光强度，避免触发 Bloom
                 emissiveIntensity: 0.05  // 从 0.1 降至 0.05
             });
-            const border = new THREE.Mesh(borderGeo, borderMat);
+            const border = new THREE.Mesh(borderGeo, borderMat.clone());
+            borderMat.dispose();
             border.position.z = -0.01;  // 边框在照片后面
             border.renderOrder = 998;  // 边框在照片之前渲染
 
@@ -1477,7 +1937,8 @@
 
             const s = 0.8;
             group.scale.set(s,s,s);
-            
+            group.userData.baseScale = s * 2.5;
+
             photoMeshGroup.add(group);
             const particle = new Particle(group, 'PHOTO', false);
             particleSystem.push(particle);
@@ -1520,14 +1981,35 @@
             // 从场景中移除mesh
             const particle = photoData.particle;
             if (particle && particle.mesh) {
+                if (STATE.candidateTarget === particle.mesh) {
+                    STATE.candidateTarget = null;
+                }
+
+                if (STATE.focusTarget === particle.mesh) {
+                    STATE.focusTarget = null;
+                    STATE.mode = 'SCATTER';
+                }
+
+                const removedPhotoIdx = particleSystem
+                    .filter(p => p.type === 'PHOTO')
+                    .indexOf(particle);
+
                 photoMeshGroup.remove(particle.mesh);
-                
-                // 从粒子系统中移除
+
                 const index = particleSystem.indexOf(particle);
                 if (index > -1) {
                     particleSystem.splice(index, 1);
+
+                    const photoCount = particleSystem.filter(p => p.type === 'PHOTO').length;
+                    if (photoCount === 0) {
+                        STATE.focusIndex = -1;
+                    } else if (removedPhotoIdx <= STATE.focusIndex) {
+                        STATE.focusIndex--;
+                    } else if (STATE.focusIndex >= photoCount) {
+                        STATE.focusIndex = photoCount - 1;
+                    }
                 }
-                
+
                 // 清理几何体和材质
                 if (particle.mesh.children) {
                     particle.mesh.children.forEach(child => {
@@ -1676,57 +2158,127 @@
 
         // 修复核心：使用相对比例而非绝对距离
         function processGestures(result) {
-            if (result.landmarks && result.landmarks.length > 0) {
-                STATE.hand.detected = true;
-                const lm = result.landmarks[0];
-                STATE.hand.x = (lm[9].x - 0.5) * 2; 
-                STATE.hand.y = (lm[9].y - 0.5) * 2;
+            if (!(result.landmarks && result.landmarks.length > 0)) {
+                STATE.hand.detected = false;
+                STATE.mode = 'SCATTER';
+                STATE.focusTarget = null;
+                focusGestureFrameCount = 0;
+                focusGestureReleaseFrameCount = 0;
+                fireworkGestureFrameCount = 0;
+                resetHandRotationTracking();
+                debugInfo.innerText = "No hand detected";
+                return;
+            }
 
-                const thumb = lm[4]; 
-                const index = lm[8]; 
-                const wrist = lm[0];
-                const middleMCP = lm[9]; // 中指指根 (Knuckle)
+            const lm = result.landmarks[0];
+            const thumb = lm[4];
+            const indexTip = lm[8];
+            const wrist = lm[0];
+            const middleMCP = lm[9]; // 中指指根 (Knuckle)
 
-                // 1. 计算手掌基准大小 (手腕到中指指根的距离)
-                const handSize = Math.hypot(middleMCP.x - wrist.x, middleMCP.y - wrist.y);
-                if (handSize < 0.02) return;
+            // 1. 计算手掌基准大小 (手腕到中指指根的距离)
+            const handSize = Math.hypot(middleMCP.x - wrist.x, middleMCP.y - wrist.y);
+            if (handSize < 0.02) {
+                STATE.hand.detected = false;
+                STATE.mode = 'SCATTER';
+                STATE.focusTarget = null;
+                focusGestureFrameCount = 0;
+                focusGestureReleaseFrameCount = 0;
+                fireworkGestureFrameCount = 0;
+                resetHandRotationTracking();
+                debugInfo.innerText = "Hand too small";
+                return;
+            }
 
-                // 2. 计算手指尖端的平均伸展距离
-                const tips = [lm[8], lm[12], lm[16], lm[20]];
-                let avgTipDist = 0;
-                tips.forEach(t => avgTipDist += Math.hypot(t.x - wrist.x, t.y - wrist.y));
-                avgTipDist /= 4;
+            STATE.hand.detected = true;
+            STATE.hand.x = (middleMCP.x - 0.5) * 2;
+            STATE.hand.y = (middleMCP.y - 0.5) * 2;
 
-                // 3. 计算捏合距离 (拇指到食指)
-                const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+            // 2. 计算手指尖端的平均伸展距离
+            const tips = [lm[8], lm[12], lm[16], lm[20]];
+            const tipDistances = tips.map(t => Math.hypot(t.x - wrist.x, t.y - wrist.y));
+            const avgTipDist = tipDistances.reduce((s, d) => s + d, 0) / tipDistances.length;
 
-                // 4. 计算相对比例
-                const extensionRatio = avgTipDist / handSize;
-                const pinchRatio = pinchDist / handSize;
+            // 3. 计算捏合距离 (拇指到食指)
+            const pinchDist = Math.hypot(thumb.x - indexTip.x, thumb.y - indexTip.y);
 
-                // 调试显示
-                debugInfo.innerText = `Size: ${handSize.toFixed(2)} | Ext: ${extensionRatio.toFixed(2)} | Pinch: ${pinchRatio.toFixed(2)} | Mode: ${STATE.mode}`;
+            // 4. 计算相对比例
+            const extensionRatio = avgTipDist / handSize;
+            const pinchRatio = pinchDist / handSize;
+            const vGesture = isVGesture(lm, handSize);
+            const fireworkCandidate =
+                extensionRatio > FIREWORK_EXTENSION_THRESHOLD &&
+                tipDistances.every(d => d > handSize * FIREWORK_MIN_FINGER_THRESHOLD);
 
-                // 5. 状态判定 - 春节版
-                if (extensionRatio < 1.5) {
-                    // 握拳 → SCATTER
-                    STATE.mode = 'SCATTER';
-                    STATE.focusTarget = null;
-                } else if (pinchRatio < 0.35) {
-                    // 捏合 → FOCUS
-                    if (STATE.mode !== 'FOCUS') {
+            // 调试显示
+            debugInfo.innerText =
+                `Size: ${handSize.toFixed(2)} | Ext: ${extensionRatio.toFixed(2)} | ` +
+                `V: ${vGesture ? '1' : '0'} | Pinch: ${pinchRatio.toFixed(2)} | Mode: ${STATE.mode}`;
+
+            // 5. 状态判定：比耶进入 FOCUS，比耶释放退出 FOCUS
+            if (vGesture) {
+                focusGestureFrameCount = Math.min(focusGestureFrameCount + 1, FOCUS_ENTER_FRAMES);
+                focusGestureReleaseFrameCount = 0;
+                fireworkGestureFrameCount = 0;
+
+                if (focusGestureFrameCount >= FOCUS_ENTER_FRAMES && STATE.mode !== 'FOCUS') {
+                    const photos = particleSystem.filter(p => p.type === 'PHOTO');
+                    if (photos.length === 0) {
+                        STATE.mode = 'SCATTER';
+                        STATE.focusTarget = null;
+                    } else {
+                        if (STATE.focusIndex === -1) {
+                            const candidateIdx = STATE.candidateTarget
+                                ? photos.findIndex(p => p.mesh === STATE.candidateTarget)
+                                : -1;
+                            STATE.focusIndex = candidateIdx !== -1 ? candidateIdx : 0;
+                        } else {
+                            STATE.focusIndex = (STATE.focusIndex + 1) % photos.length;
+                        }
+                        STATE.candidateTarget = null;
                         STATE.mode = 'FOCUS';
-                        const photos = particleSystem.filter(p => p.type === 'PHOTO');
-                        if (photos.length) STATE.focusTarget = photos[Math.floor(Math.random()*photos.length)].mesh;
+                        STATE.focusTarget = photos[STATE.focusIndex].mesh;
+                        resetHandRotationTracking();
                     }
-                } else if (extensionRatio > 1.7) {
-                    // 张开手掌 → FIREWORK
-                    STATE.mode = 'FIREWORK';
-                    STATE.focusTarget = null;
                 }
             } else {
-                STATE.hand.detected = false;
-                debugInfo.innerText = "No hand detected";
+                focusGestureFrameCount = 0;
+
+                if (STATE.mode === 'FOCUS') {
+                    focusGestureReleaseFrameCount++;
+                    if (focusGestureReleaseFrameCount >= FOCUS_EXIT_FRAMES) {
+                        exitFocusMode();
+                    }
+                } else {
+                    focusGestureReleaseFrameCount = 0;
+                }
+
+                if (STATE.mode !== 'FOCUS') {
+                    if (extensionRatio < SCATTER_EXTENSION_THRESHOLD) {
+                        fireworkGestureFrameCount = 0;
+                        STATE.mode = 'SCATTER';
+                        STATE.focusTarget = null;
+                    } else if (fireworkCandidate) {
+                        fireworkGestureFrameCount = Math.min(
+                            fireworkGestureFrameCount + 1,
+                            FIREWORK_ENTER_FRAMES
+                        );
+                        if (fireworkGestureFrameCount >= FIREWORK_ENTER_FRAMES) {
+                            STATE.mode = 'FIREWORK';
+                            STATE.focusTarget = null;
+                            STATE.candidateTarget = null;
+                        }
+                    } else {
+                        fireworkGestureFrameCount = 0;
+                    }
+                }
+            }
+
+            // 增量旋转更新
+            if (STATE.mode === 'SCATTER' || STATE.mode === 'FIREWORK') {
+                updateRotationFromHand(STATE.hand.x);
+            } else {
+                resetHandRotationTracking();
             }
         }
 // wp/electronicminer wish you a Merry Christmas!
@@ -1772,24 +2324,36 @@
             const dt = clock.getDelta();
             const currentTime = performance.now();
 
-            // Rotation Logic
+            // Rotation Logic: Y 轴由 processGestures() 更新 targetY，render 帧平滑追踪
             if ((STATE.mode === 'SCATTER' || STATE.mode === 'FIREWORK') && STATE.hand.detected) {
-                const targetRotY = STATE.hand.x * Math.PI * 0.9;
-                const targetRotX = STATE.hand.y * Math.PI * 0.25;
-                STATE.rotation.y += (targetRotY - STATE.rotation.y) * 3.0 * dt;
+                const targetRotX = STATE.hand.y * ROTATION_X_LIMIT;
                 STATE.rotation.x += (targetRotX - STATE.rotation.x) * 3.0 * dt;
             } else {
-                STATE.rotation.y += 0.1 * dt;
+                if (STATE.mode !== 'FOCUS') {
+                    STATE.rotation.targetY += 0.1 * dt;
+                } else {
+                    STATE.rotation.targetY = STATE.rotation.y;
+                }
                 STATE.rotation.x += (0 - STATE.rotation.x) * 2.0 * dt;
             }
+
+            STATE.rotation.y += (STATE.rotation.targetY - STATE.rotation.y) * ROTATION_RENDER_SMOOTHING * dt;
 
             mainGroup.rotation.y = STATE.rotation.y;
             mainGroup.rotation.x = STATE.rotation.x;
 
             particleSystem.forEach(p => p.update(dt, STATE.mode, STATE.focusTarget));
 
+            mainGroup.updateMatrixWorld(true);
+            camera.updateMatrixWorld();
+
+            if (STATE.mode === 'SCATTER') {
+                updateCandidatePhoto();
+            } else if (STATE.mode === 'FIREWORK') {
+                STATE.candidateTarget = null;
+            }
+
             updateSnow();
-            updateDecorations(dt);
             fireworkSystem.update(dt, currentTime, STATE.mode === 'FIREWORK');
 
             composer.render();

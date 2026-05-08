@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(rm:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "mcp__augment-context-engine__codebase-retrieval",
+      "mcp__sequential-thinking__sequentialthinking",
+      "mcp__ace-tool__search_context",
+      "mcp__grok-search__web_search",
+      "WebSearch",
+      "WebFetch(domain:pngimg.com)",
+      "mcp__fetch__fetch",
+      "mcp__grok-search__plan_intent"
     ]
   }
 }

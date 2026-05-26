@@ -70,16 +70,101 @@
 
         /* Controls */
         .controls-wrapper {
-            position: absolute; 
-            top: 30px;          
-            right: 30px;        
+            position: absolute;
+            top: 30px;
+            right: 30px;
             pointer-events: auto;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            gap: 10px;
+            gap: 8px;
             z-index: 20;
             transition: opacity 0.5s ease;
+        }
+
+        .controls-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+            transform-origin: top right;
+            transition:
+                opacity 0.45s ease,
+                transform 0.45s ease,
+                visibility 0.45s ease;
+        }
+
+        .controls-wrapper.collapsed .controls-panel {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-8px) scale(0.98);
+            visibility: hidden;
+        }
+
+        .controls-toggle {
+            width: 38px;
+            height: 38px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 1px solid rgba(255, 69, 0, 0.45);
+            background: rgba(5, 13, 26, 0.55);
+            color: #ff4500;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-6px);
+            transition:
+                opacity 0.45s ease,
+                transform 0.45s ease,
+                background 0.3s ease,
+                box-shadow 0.3s ease;
+            backdrop-filter: blur(6px);
+        }
+
+        .controls-wrapper.collapsed .controls-toggle {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+        }
+
+        .controls-toggle:hover,
+        .controls-toggle:focus-visible {
+            background: rgba(255, 69, 0, 0.16);
+            box-shadow: 0 0 18px rgba(255, 69, 0, 0.35);
+            outline: none;
+        }
+
+        .photo-icon {
+            position: relative;
+            width: 18px;
+            height: 14px;
+            border: 1px solid currentColor;
+            box-sizing: border-box;
+        }
+
+        .photo-icon::before {
+            content: "";
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .photo-icon::after {
+            content: "";
+            position: absolute;
+            left: 2px;
+            bottom: 2px;
+            width: 11px;
+            height: 6px;
+            background: linear-gradient(135deg, transparent 48%, currentColor 50%, transparent 54%);
+            opacity: 0.9;
         }
 
         .btn-group {
@@ -179,6 +264,15 @@
                 gap: 6px;
             }
 
+            .controls-panel {
+                gap: 6px;
+            }
+
+            .controls-toggle {
+                width: 34px;
+                height: 34px;
+            }
+
             .btn-group {
                 flex-direction: column;
                 gap: 6px;
@@ -227,6 +321,11 @@
             .controls-wrapper {
                 top: 40px;
                 right: 8px;
+            }
+
+            .controls-toggle {
+                width: 32px;
+                height: 32px;
             }
 
             .upload-btn {
@@ -441,25 +540,31 @@
 
     <div id="ui-layer">
         <h1>Happy Spring Festival</h1>
-        
-        <div class="controls-wrapper">
-            <div class="btn-group">
-                <label class="upload-btn">
-                    Select Folder
-                    <input type="file" id="folder-input" webkitdirectory directory multiple>
-                </label>
-                
-                <label class="upload-btn">
-                    Select Files
-                    <input type="file" id="file-input" multiple accept="image/*">
-                </label>
-                
-                <button class="upload-btn" id="manage-photos-btn">
-                    Manage Photos
-                </button>
+
+        <div class="controls-wrapper" id="controls-wrapper">
+            <button class="controls-toggle" id="controls-toggle" type="button" aria-label="Show controls" title="Show controls">
+                <span class="photo-icon" aria-hidden="true"></span>
+            </button>
+
+            <div class="controls-panel">
+                <div class="btn-group">
+                    <label class="upload-btn">
+                        Select Folder
+                        <input type="file" id="folder-input" webkitdirectory directory multiple>
+                    </label>
+
+                    <label class="upload-btn">
+                        Select Files
+                        <input type="file" id="file-input" multiple accept="image/*">
+                    </label>
+
+                    <button class="upload-btn" id="manage-photos-btn">
+                        Manage Photos
+                    </button>
+                </div>
+                <div class="hint-text">Use "Select Folder" to load all photos at once</div>
+                <div class="hint-text" style="opacity: 0.7; font-size: 8px;">Photos auto-load from "./images/" (1-200.jpg/png)</div>
             </div>
-            <div class="hint-text">Use "Select Folder" to load all photos at once</div>
-            <div class="hint-text" style="opacity: 0.7; font-size: 8px;">Photos auto-load from "./images/" (1-200.jpg/png)</div>
         </div>
     </div>
 
@@ -554,6 +659,7 @@
         let focusGestureFrameCount = 0;
         let focusGestureReleaseFrameCount = 0;
         let fireworkGestureFrameCount = 0;
+        let controlsAutoHideTimer = null;
 
         // 增量旋转配置
         const ROTATION_Y_SENSITIVITY = Math.PI * 0.90;
@@ -570,6 +676,24 @@
         const SCATTER_EXTENSION_THRESHOLD = 1.45;
         const FIREWORK_EXTENSION_THRESHOLD = 1.65;
         const FIREWORK_MIN_FINGER_THRESHOLD = 1.25;
+        const CONTROLS_AUTO_HIDE_DELAY = 3000;
+        const FIREWORK_BACKDROP_SCALE = 0.28;
+        const FIREWORK_DUST_SCALE = 0.55;
+        const FIREWORK_BACKDROP_SPIN = 0.16;
+        const FIREWORK_PULSE_DURATION = 1.05;
+        const FIREWORK_PULSE_EXPANSION = 1.38;
+        const FIREWORK_PULSE_MIN_SCALE = 0.16;
+        const FIREWORK_LAUNCH_DELAY = 0.78;
+        const FIREWORK_RESIDUE_MAX = 14;
+        const FIREWORK_RESIDUE_LIFE = 1.05;
+        const FIREWORK_AFTERGLOW_OPACITY = 0.12;
+        const FIREWORK_SMOKE_OPACITY = 0.045;
+        let fireworkPulseElapsed = FIREWORK_PULSE_DURATION;
+        let wasFireworkMode = false;
+
+        function getFireworkPulseProgress() {
+            return THREE.MathUtils.clamp(fireworkPulseElapsed / FIREWORK_PULSE_DURATION, 0, 1);
+        }
 
         let scene, camera, renderer, composer;
         let mainGroup;
@@ -582,6 +706,7 @@
         let fireworkSystem;
         const textureCache = new Map();
         let glowTextureCache = null;
+        let smokeTextureCache = null;
         const debugInfo = document.getElementById('debug-info');
 
         // --- 新增：照片管理数据结构 ---
@@ -1120,6 +1245,116 @@
                 gl_FragColor = vec4(vColor * 1.4, intensity);
             }`;
 
+        function getGlowTexture() {
+            if (glowTextureCache) return glowTextureCache;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+            gradient.addColorStop(0.0, 'rgba(255,255,255,0.9)');
+            gradient.addColorStop(0.18, 'rgba(255,220,140,0.34)');
+            gradient.addColorStop(0.58, 'rgba(255,160,80,0.08)');
+            gradient.addColorStop(1.0, 'rgba(255,160,80,0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 128, 128);
+
+            glowTextureCache = new THREE.CanvasTexture(canvas);
+            return glowTextureCache;
+        }
+
+        function getSmokeTexture() {
+            if (smokeTextureCache) return smokeTextureCache;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const gradient = ctx.createRadialGradient(64, 64, 6, 64, 64, 64);
+            gradient.addColorStop(0.0, 'rgba(210,220,230,0.38)');
+            gradient.addColorStop(0.34, 'rgba(190,205,220,0.14)');
+            gradient.addColorStop(0.76, 'rgba(170,185,205,0.04)');
+            gradient.addColorStop(1.0, 'rgba(170,185,205,0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 128, 128);
+
+            smokeTextureCache = new THREE.CanvasTexture(canvas);
+            return smokeTextureCache;
+        }
+
+        class FireworkResidue {
+            constructor(position, color, sceneRef) {
+                this.position = position.clone();
+                this.sceneRef = sceneRef;
+                this.life = FIREWORK_RESIDUE_LIFE;
+                this.age = 0;
+                this.alive = true;
+
+                const glowColor = new THREE.Color(color);
+                this.glowMaterial = new THREE.SpriteMaterial({
+                    map: getGlowTexture(),
+                    color: glowColor,
+                    transparent: true,
+                    opacity: FIREWORK_AFTERGLOW_OPACITY,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+                this.glow = new THREE.Sprite(this.glowMaterial);
+                this.glow.position.copy(this.position);
+                const glowSize = THREE.MathUtils.randFloat(5.0, 8.0);
+                this.glow.userData.baseSize = glowSize;
+                this.glow.scale.setScalar(glowSize);
+                sceneRef.add(this.glow);
+
+                this.smokeMaterial = new THREE.SpriteMaterial({
+                    map: getSmokeTexture(),
+                    color: 0x9fb4c8,
+                    transparent: true,
+                    opacity: FIREWORK_SMOKE_OPACITY,
+                    blending: THREE.NormalBlending,
+                    depthWrite: false
+                });
+                this.smoke = new THREE.Sprite(this.smokeMaterial);
+                this.smoke.position.copy(this.position);
+                this.smoke.position.y -= THREE.MathUtils.randFloat(0.2, 0.8);
+                this.smoke.position.x += THREE.MathUtils.randFloatSpread(1.2);
+                this.smoke.position.z += THREE.MathUtils.randFloatSpread(1.2);
+                const smokeSize = THREE.MathUtils.randFloat(7.0, 11.0);
+                this.smoke.userData.baseSize = smokeSize;
+                this.smoke.scale.setScalar(smokeSize);
+                this.smoke.material.rotation = Math.random() * Math.PI;
+                sceneRef.add(this.smoke);
+            }
+
+            update(dt) {
+                this.age += dt;
+                const t = THREE.MathUtils.clamp(this.age / this.life, 0, 1);
+                const fade = Math.pow(1 - t, 1.7);
+
+                this.glow.material.opacity = FIREWORK_AFTERGLOW_OPACITY * fade;
+                const glowScale = this.glow.userData.baseSize * THREE.MathUtils.lerp(1.0, 1.35, t);
+                this.glow.scale.setScalar(glowScale);
+
+                this.smoke.material.opacity = FIREWORK_SMOKE_OPACITY * fade;
+                this.smoke.position.y += dt * 0.45;
+                this.smoke.material.rotation += dt * 0.18;
+                const smokeScale = this.smoke.userData.baseSize * THREE.MathUtils.lerp(1.0, 1.45, t);
+                this.smoke.scale.setScalar(smokeScale);
+
+                if (this.age >= this.life) {
+                    this.alive = false;
+                }
+            }
+
+            dispose(sceneRef) {
+                sceneRef.remove(this.glow);
+                sceneRef.remove(this.smoke);
+                this.glowMaterial.dispose();
+                this.smokeMaterial.dispose();
+            }
+        }
+
         class Explosion {
             static TYPE_TABLE = {
                 PEONY:         { count: 500,  gravity: 4.0, drag: 0.965, speedMin: 12, speedRange: 24, life: 3.0, baseSize: 0.80, sparkle: 0.05, trailLife: 0.55 },
@@ -1508,6 +1743,7 @@
                 this.sceneRef = sceneRef;
                 this.rockets = [];
                 this.explosions = [];
+                this.residues = [];
                 this.lastLaunchTime = 0;
                 this.comboQueue = [];
                 this.nextComboTime = 0;
@@ -1541,6 +1777,15 @@
                     explosion.update(dt);
                     if (!explosion.alive) {
                         explosion.dispose(this.sceneRef);
+                        return false;
+                    }
+                    return true;
+                });
+
+                this.residues = this.residues.filter(residue => {
+                    residue.update(dt);
+                    if (!residue.alive) {
+                        residue.dispose(this.sceneRef);
                         return false;
                     }
                     return true;
@@ -1619,13 +1864,20 @@
 
             createExplosion(rocket) {
                 this.explosions.push(new Explosion(rocket.position, rocket.color, rocket.type, this.sceneRef));
+                if (this.residues.length >= FIREWORK_RESIDUE_MAX) {
+                    const oldest = this.residues.shift();
+                    oldest.dispose(this.sceneRef);
+                }
+                this.residues.push(new FireworkResidue(rocket.position, rocket.color, this.sceneRef));
             }
 
             dispose() {
                 this.rockets.forEach(r => r.dispose(this.sceneRef));
                 this.explosions.forEach(e => e.dispose(this.sceneRef));
+                this.residues.forEach(r => r.dispose(this.sceneRef));
                 this.rockets = [];
                 this.explosions = [];
+                this.residues = [];
             }
         }
 
@@ -1641,6 +1893,7 @@
                 this.baseScale = mesh.scale.x;
                 this.visState = 'VISIBLE';
                 this.prevMode = null;
+                this.fireworkPulseDone = false;
 
                 const speedMult = (type === 'PHOTO') ? 0.3 : 2.0;
 
@@ -1690,18 +1943,58 @@
                 );
             }
 // wp/electronicminer wish you a Merry Christmas!
-            update(dt, mode, focusTargetMesh) {
+            update(dt, mode, focusTargetMesh, fireworkPulseProgress = 1) {
                 const entered = mode === 'FIREWORK' && this.prevMode !== 'FIREWORK';
                 const exited = mode !== 'FIREWORK' && this.prevMode === 'FIREWORK';
                 this.prevMode = mode;
 
-                if (entered) this.visState = 'FADING_OUT';
-                if (exited) { this.visState = 'FADING_IN'; this.mesh.visible = true; }
+                if (entered) {
+                    this.fireworkPulseDone = false;
+                    this.visState = 'VISIBLE';
+                    this.mesh.visible = true;
+                }
+                if (exited) {
+                    this.fireworkPulseDone = false;
+                    this.visState = 'FADING_IN';
+                    this.mesh.visible = true;
+                }
 
                 if (this.visState === 'HIDDEN') return;
 
                 const _v3 = _pv3;
                 const fadeLerp = Math.min(1, 8 * dt);
+
+                if (mode === 'FIREWORK' && !this.fireworkPulseDone) {
+                    const progress = THREE.MathUtils.clamp(fireworkPulseProgress, 0, 1);
+                    if (progress < 1) {
+                        const eased = 1 - Math.pow(1 - progress, 3);
+                        const expand = THREE.MathUtils.lerp(1, FIREWORK_PULSE_EXPANSION, eased);
+                        const target = _v3.copy(this.posScatter).multiplyScalar(expand);
+                        this.mesh.position.lerp(target, Math.min(1, 3.5 * dt));
+
+                        this.mesh.rotation.x += this.spinSpeed.x * dt * 0.55;
+                        this.mesh.rotation.y += this.spinSpeed.y * dt * 0.55;
+                        this.mesh.rotation.z += this.spinSpeed.z * dt * 0.55;
+
+                        let pulseScale = this.baseScale;
+                        if (this.isDust) {
+                            pulseScale = this.baseScale * (0.8 + 0.4 * Math.sin(clock.elapsedTime * 4 + this.mesh.id));
+                        } else if (this.type === 'PHOTO') {
+                            pulseScale = this.baseScale * 2.5;
+                        }
+                        const s = THREE.MathUtils.lerp(pulseScale, this.baseScale * FIREWORK_PULSE_MIN_SCALE, eased);
+                        this.mesh.scale.lerp(_v3.set(s, s, s), Math.min(1, dt / 0.18));
+                        return;
+                    }
+
+                    this.fireworkPulseDone = true;
+                    if (this.type === 'PHOTO') {
+                        this.visState = 'FADING_OUT';
+                    } else {
+                        this.visState = 'VISIBLE';
+                    }
+                }
+
                 if (this.visState === 'FADING_OUT') {
                     this.mesh.scale.lerp(_v3.set(0, 0, 0), fadeLerp);
                     if (this.mesh.scale.x < 0.01) {
@@ -1735,10 +2028,11 @@
                 const lerpSpeed = (mode === 'FOCUS' && this.mesh === focusTargetMesh) ? 5.0 : 2.0;
                 this.mesh.position.lerp(target, lerpSpeed * dt);
 
-                if (mode === 'SCATTER') {
-                    this.mesh.rotation.x += this.spinSpeed.x * dt;
-                    this.mesh.rotation.y += this.spinSpeed.y * dt;
-                    this.mesh.rotation.z += this.spinSpeed.z * dt;
+                if (mode === 'SCATTER' || (mode === 'FIREWORK' && this.type !== 'PHOTO')) {
+                    const spinScale = mode === 'FIREWORK' ? FIREWORK_BACKDROP_SPIN : 1.0;
+                    this.mesh.rotation.x += this.spinSpeed.x * dt * spinScale;
+                    this.mesh.rotation.y += this.spinSpeed.y * dt * spinScale;
+                    this.mesh.rotation.z += this.spinSpeed.z * dt * spinScale;
                 }
 
                 if (mode === 'FOCUS' && this.mesh === focusTargetMesh) {
@@ -1746,7 +2040,10 @@
                 }
 
                 let s = this.baseScale;
-                if (this.isDust) {
+                if (mode === 'FIREWORK' && this.type !== 'PHOTO') {
+                    const breath = 0.86 + 0.14 * Math.sin(clock.elapsedTime * 1.6 + this.mesh.id);
+                    s = this.baseScale * (this.isDust ? FIREWORK_DUST_SCALE : FIREWORK_BACKDROP_SCALE) * breath;
+                } else if (this.isDust) {
                     s = this.baseScale * (0.8 + 0.4 * Math.sin(clock.elapsedTime * 4 + this.mesh.id));
                 } else if (mode === 'SCATTER' && this.type === 'PHOTO') {
                     s = this.baseScale * 2.5;
@@ -2105,6 +2402,45 @@
             modal.classList.remove('active');
         }
 
+        function setControlsCollapsed(collapsed) {
+            const controls = document.getElementById('controls-wrapper');
+            const toggle = document.getElementById('controls-toggle');
+            if (!controls || !toggle) return;
+
+            controls.classList.toggle('collapsed', collapsed);
+            toggle.setAttribute('aria-label', collapsed ? 'Show controls' : 'Hide controls');
+            toggle.title = collapsed ? 'Show controls' : 'Hide controls';
+        }
+
+        function scheduleControlsAutoHide() {
+            clearTimeout(controlsAutoHideTimer);
+            controlsAutoHideTimer = setTimeout(() => {
+                setControlsCollapsed(true);
+            }, CONTROLS_AUTO_HIDE_DELAY);
+        }
+
+        function revealControlsTemporarily() {
+            setControlsCollapsed(false);
+            scheduleControlsAutoHide();
+        }
+
+        function setupControlsAutoHide() {
+            const controls = document.getElementById('controls-wrapper');
+            const toggle = document.getElementById('controls-toggle');
+            if (!controls || !toggle) return;
+
+            toggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                revealControlsTemporarily();
+            });
+
+            controls.addEventListener('pointerenter', revealControlsTemporarily);
+            controls.addEventListener('focusin', revealControlsTemporarily);
+            controls.addEventListener('pointerleave', scheduleControlsAutoHide);
+
+            scheduleControlsAutoHide();
+        }
+
         // --- MEDIAPIPE (Adaptive Fix) ---
         async function initMediaPipe() {
             video = document.getElementById('webcam');
@@ -2292,6 +2628,7 @@
             
             document.getElementById('file-input').addEventListener('change', handleImageUpload);
             document.getElementById('folder-input').addEventListener('change', handleImageUpload);
+            setupControlsAutoHide();
             
             // 照片管理按钮
             document.getElementById('manage-photos-btn').addEventListener('click', openPhotoManager);
@@ -2323,6 +2660,17 @@
             requestAnimationFrame(animate);
             const dt = clock.getDelta();
             const currentTime = performance.now();
+            const isFireworkMode = STATE.mode === 'FIREWORK';
+
+            if (isFireworkMode && !wasFireworkMode) {
+                fireworkPulseElapsed = 0;
+            }
+            if (isFireworkMode) {
+                fireworkPulseElapsed = Math.min(FIREWORK_PULSE_DURATION, fireworkPulseElapsed + dt);
+            } else {
+                fireworkPulseElapsed = FIREWORK_PULSE_DURATION;
+            }
+            wasFireworkMode = isFireworkMode;
 
             // Rotation Logic: Y 轴由 processGestures() 更新 targetY，render 帧平滑追踪
             if ((STATE.mode === 'SCATTER' || STATE.mode === 'FIREWORK') && STATE.hand.detected) {
@@ -2342,7 +2690,8 @@
             mainGroup.rotation.y = STATE.rotation.y;
             mainGroup.rotation.x = STATE.rotation.x;
 
-            particleSystem.forEach(p => p.update(dt, STATE.mode, STATE.focusTarget));
+            const fireworkPulseProgress = getFireworkPulseProgress();
+            particleSystem.forEach(p => p.update(dt, STATE.mode, STATE.focusTarget, fireworkPulseProgress));
 
             mainGroup.updateMatrixWorld(true);
             camera.updateMatrixWorld();
@@ -2354,7 +2703,8 @@
             }
 
             updateSnow();
-            fireworkSystem.update(dt, currentTime, STATE.mode === 'FIREWORK');
+            const canLaunchFireworks = isFireworkMode && fireworkPulseElapsed >= FIREWORK_LAUNCH_DELAY;
+            fireworkSystem.update(dt, currentTime, canLaunchFireworks);
 
             composer.render();
         }

@@ -194,6 +194,12 @@
             box-shadow: 0 0 20px rgba(255, 69, 0, 0.5);
         }
 
+        .greeting-btn.is-active {
+            background: #ff4500;
+            color: #000;
+            box-shadow: 0 0 20px rgba(255, 69, 0, 0.5);
+        }
+
         .hint-text {
             color: rgba(255, 69, 0, 0.5);
             font-size: 9px;
@@ -539,7 +545,7 @@
     <div id="canvas-container"></div>
 
     <div id="ui-layer">
-        <h1>Happy Spring Festival</h1>
+        <h1 id="title-heading">Happy Birthday</h1>
 
         <div class="controls-wrapper" id="controls-wrapper">
             <button class="controls-toggle" id="controls-toggle" type="button" aria-label="Show controls" title="Show controls">
@@ -562,6 +568,14 @@
                         Manage Photos
                     </button>
                 </div>
+
+                <div class="btn-group greeting-group" role="group" aria-label="Select greeting">
+                    <button class="upload-btn greeting-btn" type="button"
+                        data-greeting="Happy Spring Festival" data-theme="christmas">Spring Festival</button>
+                    <button class="upload-btn greeting-btn is-active" type="button"
+                        data-greeting="Happy Birthday" data-theme="birthday">Birthday</button>
+                </div>
+
                 <div class="hint-text">Use "Select Folder" to load all photos at once</div>
                 <div class="hint-text" style="opacity: 0.7; font-size: 8px;">Photos auto-load from "./images/" (1-200.jpg/png)</div>
             </div>
@@ -1883,10 +1897,14 @@
 
         const _pv3 = new THREE.Vector3();
         class Particle {
-            constructor(mesh, type, isDust = false) {
+            constructor(mesh, type, isDust = false, theme = 'common') {
                 this.mesh = mesh;
                 this.type = type;
                 this.isDust = isDust;
+                // 主题归属：'common' 两个主题共用，'christmas'/'birthday' 各自专属
+                this.theme = theme;
+                // 主题切换驱动的目标显隐，独立于烟花用的 visState
+                this.themeVisible = true;
 
                 this.posTree = new THREE.Vector3();
                 this.posScatter = new THREE.Vector3();
@@ -1950,19 +1968,35 @@
 
                 if (entered) {
                     this.fireworkPulseDone = false;
-                    this.visState = 'VISIBLE';
-                    this.mesh.visible = true;
+                    this.visState = this.themeVisible ? 'VISIBLE' : 'HIDDEN';
+                    this.mesh.visible = this.themeVisible;
                 }
                 if (exited) {
                     this.fireworkPulseDone = false;
-                    this.visState = 'FADING_IN';
-                    this.mesh.visible = true;
+                    this.visState = this.themeVisible ? 'FADING_IN' : 'HIDDEN';
+                    this.mesh.visible = this.themeVisible;
                 }
-
-                if (this.visState === 'HIDDEN') return;
 
                 const _v3 = _pv3;
                 const fadeLerp = Math.min(1, 8 * dt);
+
+                // 主题切换：被隐藏的粒子缩没后驻留 HIDDEN；被显示的粒子缩现
+                if (!this.themeVisible) {
+                    if (this.visState === 'HIDDEN') return;
+                    this.mesh.scale.lerp(_v3.set(0, 0, 0), fadeLerp);
+                    if (this.mesh.scale.x < 0.01) {
+                        this.mesh.scale.set(0, 0, 0);
+                        this.mesh.visible = false;
+                        this.visState = 'HIDDEN';
+                    }
+                    return;
+                }
+                if (this.themeVisible && this.visState === 'HIDDEN') {
+                    this.mesh.visible = true;
+                    this.visState = 'FADING_IN';
+                }
+
+                if (this.visState === 'HIDDEN') return;
 
                 if (mode === 'FIREWORK' && !this.fireworkPulseDone) {
                     const progress = THREE.MathUtils.clamp(fireworkPulseProgress, 0, 1);
@@ -2082,9 +2116,103 @@
             });
         }
 
+        let currentGreetingTheme = 'birthday';
+
+        // 按祝福语主题切换粒子显隐：common 常驻，christmas/birthday 各自专属
+        // 只改 themeVisible，实际缩放淡入淡出由 Particle.update 驱动
+        function applyGreetingTheme(theme) {
+            currentGreetingTheme = theme;
+            particleSystem.forEach(p => {
+                if (p.type === 'PHOTO' || p.isDust) return;
+                p.themeVisible = (p.theme === 'common') || (p.theme === theme);
+            });
+        }
+
+        // 复用几何：多个生日粒子共享，避免重复创建
+        const _birthdayGeoCache = {};
+        function birthdayGeo(key, factory) {
+            return _birthdayGeoCache[key] || (_birthdayGeoCache[key] = factory());
+        }
+
+        // 五角星几何：真实星形轮廓（挤出成薄片），而非近似多面体
+        function makeStarGeometry() {
+            const shape = new THREE.Shape();
+            const outer = 0.4, inner = 0.17, points = 5;
+            for (let i = 0; i < points * 2; i++) {
+                const radius = (i % 2 === 0) ? outer : inner;
+                const a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+                const x = Math.cos(a) * radius;
+                const y = Math.sin(a) * radius;
+                i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y);
+            }
+            shape.closePath();
+            const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.14, bevelEnabled: false });
+            geo.center();
+            return geo;
+        }
+
+        // 生日特色粒子：程序化构造，风格贴合现有装饰粒子
+        // 内部比例 —— 气球 45% / 彩带礼盒 30% / 星星 20% / 蛋糕 5%
+        function buildBirthdayMesh(ctx) {
+            const { sphereGeo, boxGeo, goldMat, pickBirthdayMat, flameMat } = ctx;
+            const r = Math.random();
+
+            if (r < 0.45) {
+                // 🎈 气球：水滴形（球体 + 底部锥尖），同色更像气球
+                const mat = pickBirthdayMat();
+                const group = new THREE.Group();
+                const body = new THREE.Mesh(sphereGeo, mat);
+                body.scale.set(0.52, 0.64, 0.52);
+                const tipGeo = birthdayGeo('balloonTip', () => new THREE.ConeGeometry(0.18, 0.36, 12));
+                const tip = new THREE.Mesh(tipGeo, mat);
+                tip.position.y = -0.32;
+                tip.rotation.x = Math.PI;
+                group.add(body, tip);
+                return { mesh: group, type: 'BALLOON' };
+            }
+
+            if (r < 0.75) {
+                // 🎁 彩带礼盒：礼盒 + 十字缎带（加粗、金色对比）+ 顶部蝴蝶结
+                const group = new THREE.Group();
+                const box = new THREE.Mesh(boxGeo, pickBirthdayMat());
+                const bandX = birthdayGeo('giftBandX', () => new THREE.BoxGeometry(0.62, 0.62, 0.18));
+                const bandZ = birthdayGeo('giftBandZ', () => new THREE.BoxGeometry(0.18, 0.62, 0.62));
+                const ribbon1 = new THREE.Mesh(bandX, goldMat);
+                const ribbon2 = new THREE.Mesh(bandZ, goldMat);
+                const bowGeo = birthdayGeo('giftBow', () => new THREE.SphereGeometry(0.13, 12, 12));
+                const bow = new THREE.Mesh(bowGeo, goldMat);
+                bow.position.y = 0.33;
+                group.add(box, ribbon1, ribbon2, bow);
+                return { mesh: group, type: 'GIFT_RIBBON' };
+            }
+
+            if (r < 0.95) {
+                // ⭐ 星星：真实五角星
+                const star = new THREE.Mesh(birthdayGeo('star', makeStarGeometry), pickBirthdayMat());
+                return { mesh: star, type: 'STAR' };
+            }
+
+            // 🎂 蛋糕：双层蛋糕体 + 蜡烛 + 自发光火焰（点缀彩蛋）
+            const group = new THREE.Group();
+            const tier1Geo = birthdayGeo('cakeTier1', () => new THREE.CylinderGeometry(0.34, 0.36, 0.22, 20));
+            const tier2Geo = birthdayGeo('cakeTier2', () => new THREE.CylinderGeometry(0.22, 0.24, 0.18, 20));
+            const tier1 = new THREE.Mesh(tier1Geo, pickBirthdayMat());
+            tier1.position.y = -0.08;
+            const tier2 = new THREE.Mesh(tier2Geo, pickBirthdayMat());
+            tier2.position.y = 0.14;
+            const candleGeo = birthdayGeo('candle', () => new THREE.CylinderGeometry(0.03, 0.03, 0.22, 8));
+            const candle = new THREE.Mesh(candleGeo, goldMat);
+            candle.position.y = 0.36;
+            const flameGeo = birthdayGeo('flame', () => new THREE.SphereGeometry(0.06, 8, 8));
+            const flame = new THREE.Mesh(flameGeo, flameMat);
+            flame.position.y = 0.52;
+            group.add(tier1, tier2, candle, flame);
+            return { mesh: group, type: 'CAKE' };
+        }
+
         function createParticles() {
-            const sphereGeo = new THREE.SphereGeometry(0.5, 32, 32); 
-            const boxGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55); 
+            const sphereGeo = new THREE.SphereGeometry(0.5, 32, 32);
+            const boxGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55);
             const curve = new THREE.CatmullRomCurve3([
                 new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(0, 0.3, 0),
                 new THREE.Vector3(0.1, 0.5, 0), new THREE.Vector3(0.3, 0.4, 0)
@@ -2114,36 +2242,73 @@
             
             const candyMat = new THREE.MeshStandardMaterial({ map: caneTexture, roughness: 0.4 });
 
+            // 生日主题活泼配色：材质手法与金/红一致，仅换色（金属点缀 + 彩色装饰）
+            const birthdayColors = [0xff6fae, 0x4fc3ff, 0x6ee7a8, 0xffe14d];
+            const birthdayMats = birthdayColors.map(color => new THREE.MeshStandardMaterial({
+                color,
+                metalness: 0.6, roughness: 0.25,
+                envMapIntensity: 1.4,
+                emissive: color, emissiveIntensity: 0.12
+            }));
+            const flameMat = new THREE.MeshBasicMaterial({ color: 0xffcf6b, toneMapped: false });
+            const pickBirthdayMat = () => birthdayMats[Math.floor(Math.random() * birthdayMats.length)];
+
+            const birthdayCtx = {
+                sphereGeo, boxGeo, goldMat, pickBirthdayMat, flameMat
+            };
+
             for (let i = 0; i < CONFIG.particles.count; i++) {
-                const rand = Math.random();
-                let mesh, type;
-                // wp/electronicminer wish you a Merry Christmas!
-                if (rand < 0.40) {
-                    mesh = new THREE.Mesh(boxGeo, greenMat);
-                    type = 'BOX';
-                } else if (rand < 0.70) {
-                    mesh = new THREE.Mesh(boxGeo, goldMat);
-                    type = 'GOLD_BOX';
-                } else if (rand < 0.92) {
-                    mesh = new THREE.Mesh(sphereGeo, goldMat);
-                    type = 'GOLD_SPHERE';
-                } else if (rand < 0.97) {
-                    mesh = new THREE.Mesh(sphereGeo, redMat);
-                    type = 'RED';
+                let mesh, type, theme;
+
+                // 生日特色粒子约占 12%，其余走通用/圣诞装饰（总数不变，密度一致）
+                if (Math.random() < 0.12) {
+                    ({ mesh, type } = buildBirthdayMesh(birthdayCtx));
+                    theme = 'birthday';
                 } else {
-                    mesh = new THREE.Mesh(candyGeo, candyMat);
-                    type = 'CANE';
+                    const rand = Math.random();
+                    // wp/electronicminer wish you a Merry Christmas!
+                    if (rand < 0.40) {
+                        mesh = new THREE.Mesh(boxGeo, greenMat);
+                        type = 'BOX'; theme = 'common';
+                    } else if (rand < 0.70) {
+                        mesh = new THREE.Mesh(boxGeo, goldMat);
+                        type = 'GOLD_BOX'; theme = 'common';
+                    } else if (rand < 0.92) {
+                        mesh = new THREE.Mesh(sphereGeo, goldMat);
+                        type = 'GOLD_SPHERE'; theme = 'common';
+                    } else if (rand < 0.97) {
+                        mesh = new THREE.Mesh(sphereGeo, redMat);
+                        type = 'RED'; theme = 'common';
+                    } else {
+                        mesh = new THREE.Mesh(candyGeo, candyMat);
+                        type = 'CANE'; theme = 'christmas';
+                    }
                 }
 
-                const s = 0.4 + Math.random() * 0.5;
-                mesh.scale.set(s,s,s);
-                mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
-                
+                if (theme === 'birthday') {
+                    // 生日粒子放大且保持直立，仅随机绕 Y，避免翻滚糊成一团
+                    const s = 1.15 + Math.random() * 0.45;
+                    mesh.scale.set(s, s, s);
+                    mesh.rotation.set(0, Math.random() * Math.PI * 2, 0);
+                } else {
+                    const s = 0.4 + Math.random() * 0.5;
+                    mesh.scale.set(s, s, s);
+                    mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
+                }
+
                 mainGroup.add(mesh);
-                particleSystem.push(new Particle(mesh, type, false));
+                const particle = new Particle(mesh, type, false, theme);
+                if (theme === 'birthday') {
+                    // 直立缓转：清零 X/Z 自转，Y 轴慢速旋转以展示形状
+                    particle.spinSpeed.set(0, (Math.random() - 0.5) * 0.6, 0);
+                }
+                particleSystem.push(particle);
             }
 
             mainGroup.add(photoMeshGroup);
+
+            // 初始即生日形态，与默认标题 "Happy Birthday" 对齐
+            applyGreetingTheme('birthday');
         }
 
         function createDust() {
@@ -2633,6 +2798,17 @@
             // 照片管理按钮
             document.getElementById('manage-photos-btn').addEventListener('click', openPhotoManager);
             document.getElementById('close-modal-btn').addEventListener('click', closePhotoManager);
+
+            // 祝福语切换：选哪个显示哪个
+            const titleHeading = document.getElementById('title-heading');
+            const greetingBtns = document.querySelectorAll('.greeting-btn');
+            greetingBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    titleHeading.textContent = btn.dataset.greeting;
+                    greetingBtns.forEach(b => b.classList.toggle('is-active', b === btn));
+                    applyGreetingTheme(btn.dataset.theme);
+                });
+            });
             
             // 点击模态框背景关闭
             document.getElementById('photo-manager-modal').addEventListener('click', (e) => {

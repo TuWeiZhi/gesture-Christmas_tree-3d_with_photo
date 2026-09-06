@@ -9,26 +9,77 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Grand Luxury Tree - Spring Festival Edition</title>
     <style>
         /* 修改背景为深色渐变，不再是纯黑 */
-        body { 
-            margin: 0; 
-            overflow: hidden; 
-            background: radial-gradient(circle at center, #0f2027 0%, #203a43 50%, #2c5364 100%); 
-            background-color: #050d1a; /* Fallback */
+        :root {
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-right: env(safe-area-inset-right, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-left: env(safe-area-inset-left, 0px);
+
+            /* 主题视觉变量：默认春节（橙红），body[data-theme="birthday"] 覆盖为生日（粉紫） */
+            --accent: #ff4500;
+            --accent-rgb: 255, 69, 0;
+            --title-grad-top: #fff;
+            --title-grad-bottom: #ff4500;
+            --title-glow: rgba(252, 238, 167, 0.6);
+            --page-bg: radial-gradient(circle at center, #0f2027 0%, #203a43 50%, #2c5364 100%);
+            --page-bg-color: #050d1a;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            overscroll-behavior: none;
+            background: var(--page-bg);
+            background-color: var(--page-bg-color); /* Fallback */
             font-family: 'Times New Roman', serif; 
         }
-        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+
+        /* 生日主题：玫瑰粉强调色 + 梦幻紫夜背景 + 粉金标题 */
+        body[data-theme="birthday"] {
+            --accent: #ff7bac;
+            --accent-rgb: 255, 123, 172;
+            --title-grad-top: #fff5fa;
+            --title-grad-bottom: #ff7bac;
+            --title-glow: rgba(255, 158, 196, 0.65);
+            --page-bg: radial-gradient(circle at center, #221038 0%, #3b1a54 50%, #582b6e 100%);
+            --page-bg-color: #160b28;
+        }
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            z-index: 1;
+            touch-action: none;
+        }
+
+        #canvas-container canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
         
         /* UI Overlay */
         #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            position: fixed; inset: 0; width: 100%; height: 100vh; height: 100dvh;
             z-index: 10; pointer-events: none;
             display: flex; flex-direction: column; 
             align-items: center;
-            padding-top: 40px;
+            padding-top: calc(40px + var(--safe-top));
+            padding-right: var(--safe-right);
+            padding-bottom: var(--safe-bottom);
+            padding-left: var(--safe-left);
             box-sizing: border-box;
             transition: opacity 0.5s ease;
         }
@@ -41,38 +92,48 @@
         /* Loading */
         #loader {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: #050d1a; z-index: 100;
+            background: var(--page-bg-color); z-index: 100;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             transition: opacity 0.8s ease-out;
         }
         .loader-text {
-            color: #ff4500; font-size: 14px; letter-spacing: 4px; margin-top: 20px;
+            color: var(--accent); font-size: 14px; letter-spacing: 4px; margin-top: 20px;
             text-transform: uppercase; font-weight: 100;
         }
         .spinner {
-            width: 40px; height: 40px; border: 1px solid rgba(255, 69, 0, 0.2);
-            border-top: 1px solid #ff4500; border-radius: 50%; 
+            width: 40px; height: 40px; border: 1px solid rgba(var(--accent-rgb), 0.2);
+            border-top: 1px solid var(--accent); border-radius: 50%; 
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         /* Typography */
         h1 { 
-            color: #fceea7; font-size: 56px; margin: 0; font-weight: 400; 
-            letter-spacing: 6px; 
-            text-shadow: 0 0 50px rgba(252, 238, 167, 0.6); 
-            background: linear-gradient(to bottom, #fff, #ff4500);
+            color: #fceea7; font-size: clamp(32px, 4vw, 56px); margin: 0; font-weight: 400;
+            letter-spacing: 6px;
+            max-width: min(72vw, 900px);
+            text-align: center;
+            line-height: 1.15;
+            text-shadow: 0 0 50px var(--title-glow); 
+            background: linear-gradient(to bottom, var(--title-grad-top), var(--title-grad-bottom));
+            animation: titleGlowBreathe 4.5s ease-in-out infinite;
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             font-family: 'Cinzel', 'Times New Roman', serif;
             opacity: 0.9;
             transition: opacity 0.5s ease;
         }
 
+        /* 标题光晕呼吸 */
+        @keyframes titleGlowBreathe {
+            0%, 100% { text-shadow: 0 0 36px var(--title-glow); }
+            50% { text-shadow: 0 0 58px var(--title-glow), 0 0 92px var(--title-glow); }
+        }
+
         /* Controls */
         .controls-wrapper {
             position: absolute;
-            top: 30px;
-            right: 30px;
+            top: calc(30px + var(--safe-top));
+            right: calc(30px + var(--safe-right));
             pointer-events: auto;
             display: flex;
             flex-direction: column;
@@ -80,6 +141,7 @@
             gap: 8px;
             z-index: 20;
             transition: opacity 0.5s ease;
+            max-height: calc(100dvh - 60px - var(--safe-top) - var(--safe-bottom));
         }
 
         .controls-panel {
@@ -92,6 +154,10 @@
                 opacity 0.45s ease,
                 transform 0.45s ease,
                 visibility 0.45s ease;
+            max-height: inherit;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-width: thin;
         }
 
         .controls-wrapper.collapsed .controls-panel {
@@ -109,9 +175,9 @@
             align-items: center;
             justify-content: center;
             padding: 0;
-            border: 1px solid rgba(255, 69, 0, 0.45);
+            border: 1px solid rgba(var(--accent-rgb), 0.45);
             background: rgba(5, 13, 26, 0.55);
-            color: #ff4500;
+            color: var(--accent);
             cursor: pointer;
             opacity: 0;
             pointer-events: none;
@@ -120,6 +186,7 @@
                 opacity 0.45s ease,
                 transform 0.45s ease,
                 background 0.3s ease,
+                border-color 0.3s ease,
                 box-shadow 0.3s ease;
             backdrop-filter: blur(6px);
         }
@@ -132,8 +199,8 @@
 
         .controls-toggle:hover,
         .controls-toggle:focus-visible {
-            background: rgba(255, 69, 0, 0.16);
-            box-shadow: 0 0 18px rgba(255, 69, 0, 0.35);
+            background: rgba(var(--accent-rgb), 0.16);
+            box-shadow: 0 0 18px rgba(var(--accent-rgb), 0.35);
             outline: none;
         }
 
@@ -174,8 +241,8 @@
 
         .upload-btn {
             background: rgba(20, 20, 20, 0.6);
-            border: 1px solid rgba(255, 69, 0, 0.4);
-            color: #ff4500; 
+            border: 1px solid rgba(var(--accent-rgb), 0.4);
+            color: var(--accent); 
             padding: 10px 20px; 
             cursor: pointer; 
             text-transform: uppercase; 
@@ -187,21 +254,24 @@
             justify-content: center;
             backdrop-filter: blur(5px);
             min-width: 120px;
+            min-height: 40px;
+            box-sizing: border-box;
+            touch-action: manipulation;
         }
         .upload-btn:hover {
-            background: #ff4500;
+            background: var(--accent);
             color: #000;
-            box-shadow: 0 0 20px rgba(255, 69, 0, 0.5);
+            box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.5);
         }
 
         .greeting-btn.is-active {
-            background: #ff4500;
+            background: var(--accent);
             color: #000;
-            box-shadow: 0 0 20px rgba(255, 69, 0, 0.5);
+            box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.5);
         }
 
         .hint-text {
-            color: rgba(255, 69, 0, 0.5);
+            color: rgba(var(--accent-rgb), 0.5);
             font-size: 9px;
             letter-spacing: 1px;
             text-transform: uppercase;
@@ -214,11 +284,11 @@
         /* Webcam feedback */
         #webcam-wrapper {
             position: absolute; 
-            bottom: 30px;       
-            left: 30px;         
+            bottom: calc(30px + var(--safe-bottom));
+            left: calc(30px + var(--safe-left));
             width: 280px;       
             height: 210px;
-            border: 1px solid rgba(255, 69, 0, 0.5); 
+            border: 1px solid rgba(var(--accent-rgb), 0.5); 
             box-shadow: 0 0 20px rgba(0,0,0,0.9);
             border-radius: 4px;
             overflow: hidden; 
@@ -241,7 +311,7 @@
             position: absolute;
             bottom: 5px;
             left: 5px;
-            color: rgba(255, 69, 0, 0.8);
+            color: rgba(var(--accent-rgb), 0.8);
             font-size: 10px;
             font-family: monospace;
             background: rgba(0,0,0,0.5);
@@ -357,18 +427,247 @@
         }
 
         /* 照片管理模态框样式 */
+        @media (min-width: 769px) and (max-width: 1180px) {
+            h1 {
+                font-size: clamp(34px, 5vw, 48px);
+                max-width: 66vw;
+            }
+
+            #ui-layer {
+                padding-top: calc(26px + var(--safe-top));
+            }
+
+            .controls-wrapper {
+                top: calc(92px + var(--safe-top));
+                right: calc(20px + var(--safe-right));
+            }
+
+            .controls-panel {
+                width: min(340px, calc(100vw - 40px - var(--safe-left) - var(--safe-right)));
+                padding: 12px;
+                border: 1px solid rgba(var(--accent-rgb), 0.28);
+                border-radius: 8px;
+                background: rgba(5, 13, 26, 0.78);
+                box-sizing: border-box;
+                backdrop-filter: blur(10px);
+            }
+
+            .btn-group {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                width: 100%;
+                gap: 8px;
+            }
+
+            .btn-group:first-child > :last-child {
+                grid-column: 1 / -1;
+            }
+
+            .upload-btn {
+                width: 100%;
+                min-width: 0;
+                min-height: 44px;
+                padding: 9px 14px;
+            }
+
+            .hint-text {
+                width: 100%;
+                text-align: left;
+                line-height: 1.35;
+            }
+
+            #webcam-wrapper {
+                width: 200px;
+                height: 150px;
+                bottom: calc(18px + var(--safe-bottom));
+                left: calc(18px + var(--safe-left));
+            }
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: clamp(22px, 7vw, 32px);
+                letter-spacing: clamp(1px, 0.8vw, 3px);
+                max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 32px);
+            }
+
+            #ui-layer {
+                padding-top: calc(14px + var(--safe-top));
+            }
+
+            .controls-wrapper {
+                top: calc(58px + var(--safe-top));
+                right: calc(10px + var(--safe-right));
+                max-height: calc(100dvh - 70px - var(--safe-top) - var(--safe-bottom));
+            }
+
+            .controls-panel {
+                width: min(260px, calc(100vw - 20px - var(--safe-left) - var(--safe-right)));
+                padding: 10px;
+                border: 1px solid rgba(var(--accent-rgb), 0.28);
+                border-radius: 8px;
+                background: rgba(5, 13, 26, 0.78);
+                box-sizing: border-box;
+                backdrop-filter: blur(10px);
+            }
+
+            .controls-toggle {
+                width: 44px;
+                height: 44px;
+            }
+
+            .btn-group {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 6px;
+                width: 100%;
+            }
+
+            .btn-group:first-child > :last-child {
+                grid-column: 1 / -1;
+            }
+
+            .upload-btn {
+                width: 100%;
+                min-width: 0;
+                min-height: 44px;
+                padding: 8px 10px;
+                font-size: 9px;
+                letter-spacing: 1px;
+                line-height: 1.25;
+            }
+
+            .hint-text {
+                width: 100%;
+                font-size: 8px;
+                letter-spacing: 0.5px;
+                text-align: left;
+                line-height: 1.35;
+            }
+
+            #webcam-wrapper {
+                bottom: calc(10px + var(--safe-bottom));
+                left: calc(10px + var(--safe-left));
+                width: clamp(108px, 27vw, 150px);
+                aspect-ratio: 4 / 3;
+                height: auto;
+            }
+        }
+
+        @media (max-width: 480px) {
+            #ui-layer {
+                padding-top: calc(10px + var(--safe-top));
+            }
+
+            .controls-wrapper {
+                top: calc(50px + var(--safe-top));
+                right: calc(8px + var(--safe-right));
+            }
+
+            .upload-btn {
+                padding: 7px 8px;
+                font-size: 8px;
+            }
+
+            .hint-text {
+                font-size: 7px;
+            }
+
+            #webcam-wrapper {
+                width: clamp(96px, 28vw, 120px);
+                height: auto;
+                bottom: calc(8px + var(--safe-bottom));
+                left: calc(8px + var(--safe-left));
+            }
+        }
+
+        @media (pointer: coarse) {
+            .controls-toggle,
+            .upload-btn,
+            .modal-close {
+                min-height: 44px;
+            }
+
+            .controls-toggle {
+                min-width: 44px;
+            }
+        }
+
+        @media (hover: none) {
+            .upload-btn:hover,
+            .controls-toggle:hover,
+            .modal-close:hover {
+                box-shadow: none;
+            }
+        }
+
+        @media (orientation: landscape) and (max-height: 600px) {
+            h1 {
+                font-size: clamp(18px, 5vh, 26px);
+            }
+
+            #ui-layer {
+                padding-top: calc(8px + var(--safe-top));
+            }
+
+            .controls-wrapper {
+                top: calc(42px + var(--safe-top));
+                max-height: calc(100dvh - 50px - var(--safe-top) - var(--safe-bottom));
+            }
+
+            .controls-panel {
+                width: min(520px, calc(100vw - 20px - var(--safe-left) - var(--safe-right)));
+                padding: 8px;
+                border: 1px solid rgba(var(--accent-rgb), 0.28);
+                border-radius: 8px;
+                background: rgba(5, 13, 26, 0.78);
+                box-sizing: border-box;
+                backdrop-filter: blur(10px);
+            }
+
+            .btn-group {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                width: 100%;
+                gap: 6px;
+            }
+
+            .greeting-group {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .upload-btn {
+                width: 100%;
+                min-width: 0;
+                min-height: 44px;
+                padding: 7px 8px;
+                font-size: 8px;
+            }
+
+            .hint-text {
+                display: none;
+            }
+
+            #webcam-wrapper {
+                width: clamp(92px, 18vw, 130px);
+            }
+        }
+
         #photo-manager-modal {
             position: fixed;
-            top: 0;
-            left: 0;
+            inset: 0;
             width: 100%;
-            height: 100%;
+            height: 100vh;
+            height: 100dvh;
             background: rgba(5, 13, 26, 0.95);
             z-index: 200;
             display: none;
             justify-content: center;
             align-items: center;
             backdrop-filter: blur(10px);
+            box-sizing: border-box;
+            padding: calc(12px + var(--safe-top)) calc(12px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(12px + var(--safe-left));
+            touch-action: pan-y;
         }
 
         #photo-manager-modal.active {
@@ -377,13 +676,16 @@
 
         .modal-content {
             background: rgba(20, 20, 20, 0.9);
-            border: 2px solid rgba(255, 69, 0, 0.6);
+            border: 2px solid rgba(var(--accent-rgb), 0.6);
             border-radius: 8px;
             padding: 30px;
             max-width: 90%;
             max-height: 90%;
             overflow-y: auto;
-            box-shadow: 0 0 50px rgba(255, 69, 0, 0.3);
+            box-shadow: 0 0 50px rgba(var(--accent-rgb), 0.3);
+            width: min(100%, 1100px);
+            box-sizing: border-box;
+            overscroll-behavior: contain;
         }
 
         .modal-header {
@@ -392,11 +694,11 @@
             align-items: center;
             margin-bottom: 20px;
             padding-bottom: 15px;
-            border-bottom: 1px solid rgba(255, 69, 0, 0.3);
+            border-bottom: 1px solid rgba(var(--accent-rgb), 0.3);
         }
 
         .modal-title {
-            color: #ff4500;
+            color: var(--accent);
             font-size: 24px;
             letter-spacing: 3px;
             text-transform: uppercase;
@@ -404,19 +706,21 @@
         }
 
         .modal-close {
-            background: rgba(255, 69, 0, 0.2);
-            border: 1px solid rgba(255, 69, 0, 0.4);
-            color: #ff4500;
+            background: rgba(var(--accent-rgb), 0.2);
+            border: 1px solid rgba(var(--accent-rgb), 0.4);
+            color: var(--accent);
             padding: 8px 16px;
+            min-height: 44px;
             cursor: pointer;
             font-size: 10px;
             letter-spacing: 2px;
             text-transform: uppercase;
             transition: all 0.3s;
+            touch-action: manipulation;
         }
 
         .modal-close:hover {
-            background: #ff4500;
+            background: var(--accent);
             color: #000;
         }
 
@@ -430,7 +734,7 @@
         .photo-item {
             position: relative;
             aspect-ratio: 1;
-            border: 1px solid rgba(255, 69, 0, 0.3);
+            border: 1px solid rgba(var(--accent-rgb), 0.3);
             border-radius: 4px;
             overflow: hidden;
             cursor: pointer;
@@ -438,8 +742,8 @@
         }
 
         .photo-item:hover {
-            border-color: #ff4500;
-            box-shadow: 0 0 20px rgba(255, 69, 0, 0.4);
+            border-color: var(--accent);
+            box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.4);
             transform: scale(1.05);
         }
 
@@ -475,7 +779,7 @@
         }
 
         .photo-count {
-            color: rgba(255, 69, 0, 0.7);
+            color: rgba(var(--accent-rgb), 0.7);
             font-size: 12px;
             letter-spacing: 1px;
             margin-top: 10px;
@@ -519,6 +823,20 @@
                 gap: 8px;
             }
         }
+
+        @media (pointer: coarse) {
+            .photo-item:hover {
+                transform: none;
+            }
+
+            .photo-item .delete-overlay {
+                opacity: 0.38;
+            }
+
+            .photo-item:hover .delete-overlay {
+                opacity: 0.55;
+            }
+        }
     </style>
     
     <style>
@@ -535,7 +853,7 @@
         }
     </script>
 </head>
-<body>
+<body data-theme="birthday">
 
     <div id="loader">
         <div class="spinner"></div>
@@ -655,6 +973,48 @@
             }
         };
 
+        // --- 主题视觉联动（春节/生日切换时，UI 之外的场景层同步过渡）---
+        const THEME_VISUALS = {
+            christmas: {
+                scene: 0x050d1a,
+                firework: [
+                    0xFF1744, 0x00E676, 0x00B0FF, 0xFFD600, 0xFFFFFF,
+                    0xAA00FF, 0xFF6D00, 0x18FFFF, 0xFF4081, 0x69F0AE,
+                    0x448AFF, 0xFFAB40, 0xE040FB, 0x76FF03
+                ],
+                burst: [0xffd966, 0xff4500, 0x9b1b1b, 0xffffff, 0xff8c69],
+                mats: {
+                    greenMat: { color: 0x8b0000, emissive: 0x002200 },
+                    redMat:   { color: 0xff4500, emissive: 0x330000 }
+                }
+            },
+            birthday: {
+                scene: 0x160b28,
+                firework: [
+                    0xFF8FB8, 0xFFD1DC, 0xFFE9A8, 0xFFD966, 0xB388FF,
+                    0x8ECAE6, 0xA8F0C6, 0xFFB37B, 0xFFFFFF, 0xFFAFCC
+                ],
+                burst: [0xFF8FB8, 0xFFE9A8, 0xB388FF, 0x8ECAE6, 0xFFAFCC, 0xFFFFFF],
+                mats: {
+                    greenMat: { color: 0xff8fb8, emissive: 0x552244 },
+                    redMat:   { color: 0xb388ff, emissive: 0x2a1a55 }
+                }
+            }
+        };
+        // 预转换 THREE.Color，避免每帧新建
+        for (const tv of Object.values(THEME_VISUALS)) {
+            tv.sceneColor = new THREE.Color(tv.scene);
+            for (const key of Object.keys(tv.mats)) {
+                tv.mats[key].color = new THREE.Color(tv.mats[key].color);
+                tv.mats[key].emissive = new THREE.Color(tv.mats[key].emissive);
+            }
+        }
+        const themeSceneTarget = THEME_VISUALS.birthday.sceneColor.clone(); // 页面默认生日主题
+        let themeMats = null;          // common 粒子共享材质（createParticles 中赋值）
+        let themeBurst = null;         // 主题切换彩屑爆开状态
+        let snowMode = 'confetti';     // 雪花系统当前形态（页面初始为生日=彩屑）
+        let snowPendingMode = null;    // 待切换形态（先淡出再换装）
+
         const STATE = {
             mode: 'SCATTER',
             focusIndex: -1,
@@ -674,6 +1034,8 @@
         let focusGestureReleaseFrameCount = 0;
         let fireworkGestureFrameCount = 0;
         let controlsAutoHideTimer = null;
+        let resizeAnimationFrame = null;
+        let viewportResizeObserver = null;
 
         // 增量旋转配置
         const ROTATION_Y_SENSITIVITY = Math.PI * 0.90;
@@ -691,19 +1053,96 @@
         const FIREWORK_EXTENSION_THRESHOLD = 1.65;
         const FIREWORK_MIN_FINGER_THRESHOLD = 1.25;
         const CONTROLS_AUTO_HIDE_DELAY = 3000;
-        const FIREWORK_BACKDROP_SCALE = 0.28;
-        const FIREWORK_DUST_SCALE = 0.55;
-        const FIREWORK_BACKDROP_SPIN = 0.16;
+        const MAX_RENDER_PIXEL_RATIO = window.matchMedia('(pointer: coarse)').matches ? 1.5 : 2;
+        const FIREWORK_DUST_SCALE = 0.035;
+        const FIREWORK_BACKDROP_POSITION_SCALE = 1.72;
+        const FIREWORK_BACKDROP_SPIN = 0.05;
         const FIREWORK_PULSE_DURATION = 1.05;
-        const FIREWORK_PULSE_EXPANSION = 1.38;
-        const FIREWORK_PULSE_MIN_SCALE = 0.16;
-        const FIREWORK_LAUNCH_DELAY = 0.78;
+        const FIREWORK_PULSE_EXPANSION = FIREWORK_BACKDROP_POSITION_SCALE;
+        const FIREWORK_PULSE_MIN_SCALE = 0.05;
+        const FIREWORK_LAUNCH_DELAY = 0.55;
+        const FIREWORK_PORTRAIT_ASPECT = 0.72;
         const FIREWORK_RESIDUE_MAX = 14;
         const FIREWORK_RESIDUE_LIFE = 1.05;
         const FIREWORK_AFTERGLOW_OPACITY = 0.12;
         const FIREWORK_SMOKE_OPACITY = 0.045;
         let fireworkPulseElapsed = FIREWORK_PULSE_DURATION;
         let wasFireworkMode = false;
+
+        function getFireworkViewportProfile() {
+            const distance = Math.max(1, camera.position.z);
+            const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * distance;
+            const halfWidth = halfHeight * camera.aspect;
+            const isPortrait = camera.aspect < FIREWORK_PORTRAIT_ASPECT;
+
+            return {
+                isPortrait,
+                startY: camera.position.y - halfHeight + 1.5,
+                targetMinY: camera.position.y + halfHeight * (isPortrait ? 0.08 : 0.12),
+                targetMaxY: camera.position.y + halfHeight * (isPortrait ? 0.62 : 0.78),
+                launchHalfWidth: Math.min(
+                    CONFIG.firework.launchXRange,
+                    halfWidth * (isPortrait ? 0.62 : 0.75)
+                ),
+                launchDepth: isPortrait ? 2.5 : 5,
+                comboChance: isPortrait ? 0.12 : 0.35,
+                maxRockets: isPortrait ? 3 : 8,
+                maxExplosions: isPortrait ? 4 : CONFIG.firework.maxExplosions,
+                intervalMin: isPortrait ? 420 : CONFIG.firework.launchIntervalMin,
+                intervalMax: isPortrait ? 760 : CONFIG.firework.launchIntervalMax,
+                rocketSpeedMin: isPortrait ? 13 : 17,
+                rocketSpeedMax: isPortrait ? 17 : 22,
+                rocketDrift: isPortrait ? 0.45 : 1.5,
+                trailScale: isPortrait ? 1.35 : 1,
+                explosionHorizontalScale: isPortrait
+                    ? THREE.MathUtils.clamp(camera.aspect / FIREWORK_PORTRAIT_ASPECT, 0.55, 0.9)
+                    : 1,
+                explosionParticleScale: isPortrait ? 0.68 : 1
+            };
+        }
+
+        function getRenderPixelRatio() {
+            return Math.min(window.devicePixelRatio || 1, MAX_RENDER_PIXEL_RATIO);
+        }
+
+        function getRenderSize() {
+            const container = document.getElementById('canvas-container');
+            const width = container?.clientWidth || window.innerWidth;
+            const height = container?.clientHeight || window.innerHeight;
+
+            return {
+                width: Math.max(1, Math.round(width)),
+                height: Math.max(1, Math.round(height))
+            };
+        }
+
+        function resizeViewport() {
+            if (!camera || !renderer) return;
+
+            const { width, height } = getRenderSize();
+            const pixelRatio = getRenderPixelRatio();
+
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            if (renderer.getPixelRatio() !== pixelRatio) {
+                renderer.setPixelRatio(pixelRatio);
+            }
+            renderer.setSize(width, height, false);
+            composer?.setPixelRatio(pixelRatio);
+            composer?.setSize(width, height);
+        }
+
+        function scheduleViewportResize() {
+            if (resizeAnimationFrame !== null) {
+                cancelAnimationFrame(resizeAnimationFrame);
+            }
+
+            resizeAnimationFrame = requestAnimationFrame(() => {
+                resizeAnimationFrame = null;
+                resizeViewport();
+            });
+        }
 
         function getFireworkPulseProgress() {
             return THREE.MathUtils.clamp(fireworkPulseElapsed / FIREWORK_PULSE_DURATION, 0, 1);
@@ -717,6 +1156,8 @@
         let handLandmarker, video;
         let caneTexture;
         let snowSystem;
+        let snowDotTexture;    // 圆点纹理（雪）
+        let snowStripTexture;  // 细长条纹理（彩屑）
         let fireworkSystem;
         const textureCache = new Map();
         let glowTextureCache = null;
@@ -1041,19 +1482,20 @@
 
         function initThree() {
             const container = document.getElementById('canvas-container');
+            const { width, height } = getRenderSize();
             scene = new THREE.Scene();
-            // 设置 Three.js 场景背景为深蓝色，与 CSS 渐变配合
-            scene.background = new THREE.Color(CONFIG.colors.bg);
-            scene.fog = new THREE.FogExp2(CONFIG.colors.fog, 0.015); // 调整雾气浓度
+            // 场景背景随主题过渡：初始为生日主题的深紫夜色（原春节深蓝 0x050d1a）
+            scene.background = themeSceneTarget.clone();
+            scene.fog = new THREE.FogExp2(themeSceneTarget.getHex(), 0.015); // 调整雾气浓度
 
-            camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 1000);
             camera.position.set(0, 2, CONFIG.camera.z);
             camera.updateMatrixWorld(true);
 
             // 启用 alpha: true 以便未来如果有需要可以透过背景
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(getRenderPixelRatio());
+            renderer.setSize(width, height, false);
             renderer.toneMapping = THREE.ReinhardToneMapping;
             
             // 🔧 修复：降低色调映射曝光度，避免过度曝光影响照片
@@ -1117,7 +1559,8 @@
 
         function setupPostProcessing() {
             const renderScene = new RenderPass(scene, camera);
-            const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+            const { width, height } = getRenderSize();
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 1.5, 0.4, 0.85);
             
             // 🔧 修复：提高 Bloom 阈值，避免影响照片
             // 原值 0.65 会让所有稍亮的物体都发光，包括照片
@@ -1161,11 +1604,9 @@
         // --- 新增：雪花系统 ---
         function createSnow() {
             const geometry = new THREE.BufferGeometry();
-            const vertices = [];
-            const velocities = [];
 
             const loader = new THREE.TextureLoader();
-            // 创建一个简单的圆形纹理作为雪花
+            // 圆点纹理 = 雪花；细长条纹理 = 彩屑（生日主题）
             const canvas = document.createElement('canvas');
             canvas.width = 32; canvas.height = 32;
             const context = canvas.getContext('2d');
@@ -1173,13 +1614,29 @@
             context.beginPath();
             context.arc(16, 16, 16, 0, Math.PI * 2);
             context.fill();
-            const snowTexture = new THREE.CanvasTexture(canvas);
+            snowDotTexture = new THREE.CanvasTexture(canvas);
+
+            const confettiCanvas = document.createElement('canvas');
+            confettiCanvas.width = 16; confettiCanvas.height = 32;
+            const confettiContext = confettiCanvas.getContext('2d');
+            confettiContext.fillStyle = 'white';
+            confettiContext.fillRect(4, 2, 8, 28);
+            snowStripTexture = new THREE.CanvasTexture(confettiCanvas);
+
+            const vertices = [];
+            const velocities = [];
+            const colors = [];
+            // 彩屑配色：马卡龙色系，每片固定一色（雪模式关闭顶点色后呈纯白）
+            const confettiPalette = [0xFF8FB8, 0xFFE9A8, 0xB388FF, 0x8ECAE6, 0xA8F0C6, 0xFFAFCC, 0xFFB37B, 0xFFFFFF];
+            const _c = new THREE.Color();
 
             for (let i = 0; i < CONFIG.particles.snowCount; i++) {
                 const x = THREE.MathUtils.randFloatSpread(100);
                 const y = THREE.MathUtils.randFloatSpread(60);
                 const z = THREE.MathUtils.randFloatSpread(60);
                 vertices.push(x, y, z);
+                _c.setHex(confettiPalette[i % confettiPalette.length]);
+                colors.push(_c.r, _c.g, _c.b);
                 
                 // 存储每个雪花的速度和摆动参数
                 velocities.push(
@@ -1190,11 +1647,14 @@
 
             geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
             geometry.setAttribute('userData', new THREE.Float32BufferAttribute(velocities, 2));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 
             const material = new THREE.PointsMaterial({
                 color: 0xffffff,
-                size: 0.4,
-                map: snowTexture,
+                // 页面初始为生日主题：顶点色 + 彩屑条纹理；切回春节时换回圆点雪
+                vertexColors: true,
+                size: 0.55,
+                map: snowStripTexture,
                 transparent: true,
                 opacity: 0.8,
                 blending: THREE.AdditiveBlending,
@@ -1206,20 +1666,53 @@
             snowSystem = snow;
         }
 
-        function updateSnow() {
+        function updateSnow(dt, isFireworkMode = false) {
             if (!snowSystem) return;
-            
+
+            const materialLerp = Math.min(1, 6 * dt);
+            // 彩屑模式：下落更慢、摇摆更大；换装前先把透明度降到 0
+            const targetOpacity = snowPendingMode ? 0 : (isFireworkMode ? 0.025 : 0.8);
+            const targetSize = snowPendingMode
+                ? snowSystem.material.size
+                : (isFireworkMode
+                    ? (snowMode === 'confetti' ? 0.14 : 0.10)
+                    : (snowMode === 'confetti' ? 0.55 : 0.4));
+
+            // 淡出到位：换装（顶点色/纹理切换需要重编译材质）
+            if (snowPendingMode && snowSystem.material.opacity < 0.03) {
+                snowMode = snowPendingMode;
+                snowPendingMode = null;
+                const m = snowSystem.material;
+                m.vertexColors = (snowMode === 'confetti');
+                m.map = (snowMode === 'confetti') ? snowStripTexture : snowDotTexture;
+                m.needsUpdate = true;
+            }
+
+            snowSystem.material.opacity = THREE.MathUtils.lerp(
+                snowSystem.material.opacity,
+                targetOpacity,
+                materialLerp
+            );
+            snowSystem.material.size = THREE.MathUtils.lerp(
+                snowSystem.material.size,
+                targetSize,
+                materialLerp
+            );
+
+            const fallScale = snowMode === 'confetti' ? 0.5 : 1;
+            const swayScale = snowMode === 'confetti' ? 2.4 : 1;
+
             const positions = snowSystem.geometry.attributes.position.array;
             const userData = snowSystem.geometry.attributes.userData.array;
 
             for (let i = 0; i < CONFIG.particles.snowCount; i++) {
-                // Y轴下落
+                // Y轴下落（彩屑更飘逸）
                 const fallSpeed = userData[i * 2];
-                positions[i * 3 + 1] -= fallSpeed;
+                positions[i * 3 + 1] -= fallSpeed * fallScale;
 
-                // X轴摇摆
+                // X轴摇摆（彩屑飘荡更明显）
                 const swaySpeed = userData[i * 2 + 1];
-                positions[i * 3] += Math.sin(clock.elapsedTime * 2 + i) * swaySpeed * 0.1;
+                positions[i * 3] += Math.sin(clock.elapsedTime * 2 + i) * swaySpeed * 0.1 * swayScale;
 
                 // 循环重置
                 if (positions[i * 3 + 1] < -30) {
@@ -1312,13 +1805,15 @@
                     transparent: true,
                     opacity: FIREWORK_AFTERGLOW_OPACITY,
                     blending: THREE.AdditiveBlending,
-                    depthWrite: false
+                    depthWrite: false,
+                    depthTest: false
                 });
                 this.glow = new THREE.Sprite(this.glowMaterial);
                 this.glow.position.copy(this.position);
                 const glowSize = THREE.MathUtils.randFloat(5.0, 8.0);
                 this.glow.userData.baseSize = glowSize;
                 this.glow.scale.setScalar(glowSize);
+                this.glow.renderOrder = 997;
                 sceneRef.add(this.glow);
 
                 this.smokeMaterial = new THREE.SpriteMaterial({
@@ -1327,7 +1822,8 @@
                     transparent: true,
                     opacity: FIREWORK_SMOKE_OPACITY,
                     blending: THREE.NormalBlending,
-                    depthWrite: false
+                    depthWrite: false,
+                    depthTest: false
                 });
                 this.smoke = new THREE.Sprite(this.smokeMaterial);
                 this.smoke.position.copy(this.position);
@@ -1338,6 +1834,7 @@
                 this.smoke.userData.baseSize = smokeSize;
                 this.smoke.scale.setScalar(smokeSize);
                 this.smoke.material.rotation = Math.random() * Math.PI;
+                this.smoke.renderOrder = 996;
                 sceneRef.add(this.smoke);
             }
 
@@ -1383,11 +1880,12 @@
             static SUB_CONFIG = { count: 100, gravity: 4.0, drag: 0.96, speedMin: 4, speedRange: 5, life: 1.2, baseSize: 0.55, sparkle: 0.10, trailLife: 0.30 };
             static TRAIL_MAX = 4000;
 
-            constructor(position, color, type, sceneRef, isSub = false) {
+            constructor(position, color, type, sceneRef, isSub = false, profile = null) {
                 this.position = position.clone();
                 this.type = type;
                 this.sceneRef = sceneRef;
                 this.isSub = isSub;
+                this.profile = profile;
                 this.cfg = isSub ? Explosion.SUB_CONFIG : (Explosion.TYPE_TABLE[type] || Explosion.TYPE_TABLE.PEONY);
                 this.maxLife = this.cfg.life;
                 this.life = this.maxLife;
@@ -1400,7 +1898,8 @@
 
             _initParticles() {
                 const cfg = this.cfg;
-                const count = cfg.count;
+                const particleScale = this.profile?.explosionParticleScale || 1;
+                const count = Math.max(80, Math.round(cfg.count * particleScale));
                 this.count = count;
                 const pos = new Float32Array(count * 3);
                 const col = new Float32Array(count * 3);
@@ -1430,8 +1929,9 @@
                     const speed = isPistilCore
                         ? (cfg.speedMin * 0.45 + Math.random() * cfg.speedRange * 0.3)
                         : (cfg.speedMin + Math.random() * cfg.speedRange);
-                    const dir = this._getDirection(i, count);
-                    this.velocities.push(dir.normalize().multiplyScalar(speed));
+                    const velocity = this._getDirection(i, count).normalize().multiplyScalar(speed);
+                    velocity.x *= this.profile?.explosionHorizontalScale || 1;
+                    this.velocities.push(velocity);
 
                     const baseCol = isPistilCore ? pistilColor : selectedColors[i % colorCount];
                     const hsl = {};
@@ -1465,10 +1965,12 @@
                     fragmentShader: FIREWORK_FS,
                     transparent: true,
                     blending: THREE.AdditiveBlending,
-                    depthWrite: false
+                    depthWrite: false,
+                    depthTest: false
                 });
 
                 this.points = new THREE.Points(geo, this.material);
+                this.points.renderOrder = 1000;
                 this.sceneRef.add(this.points);
             }
 
@@ -1486,6 +1988,7 @@
                 geo.attributes.aAlpha.setUsage(THREE.DynamicDrawUsage);
                 geo.attributes.aSize.setUsage(THREE.DynamicDrawUsage);
                 this.trailPoints = new THREE.Points(geo, this.material);
+                this.trailPoints.renderOrder = 999;
                 this.sceneRef.add(this.trailPoints);
             }
 
@@ -1559,7 +2062,14 @@
                     for (let k = 0; k < arms; k++) {
                         const ri = Math.floor((k / arms) * this.count + Math.random() * (this.count / arms));
                         const p = new THREE.Vector3(pos[ri * 3], pos[ri * 3 + 1], pos[ri * 3 + 2]);
-                        this.subExplosions.push(new Explosion(p, palette[Math.floor(Math.random() * palette.length)], 'PEONY', this.sceneRef, true));
+                        this.subExplosions.push(new Explosion(
+                            p,
+                            palette[Math.floor(Math.random() * palette.length)],
+                            'PEONY',
+                            this.sceneRef,
+                            true,
+                            this.profile
+                        ));
                     }
                 }
 
@@ -1614,17 +2124,18 @@
             static TRAIL_LEN = 80;
             static SPARK_COUNT = 25;
 
-            constructor(startPos, targetHeight, color, type, sceneRef) {
+            constructor(startPos, targetHeight, color, type, sceneRef, profile) {
                 this.position = startPos.clone();
                 this.targetHeight = targetHeight;
                 this.color = color;
                 this.type = type;
                 this.sceneRef = sceneRef;
+                this.profile = profile;
                 this.alive = true;
                 this.velocity = new THREE.Vector3(
-                    THREE.MathUtils.randFloatSpread(1.5),
-                    THREE.MathUtils.randFloat(18, 24),
-                    THREE.MathUtils.randFloatSpread(1.5)
+                    THREE.MathUtils.randFloatSpread(profile.rocketDrift),
+                    THREE.MathUtils.randFloat(profile.rocketSpeedMin, profile.rocketSpeedMax),
+                    THREE.MathUtils.randFloatSpread(profile.rocketDrift)
                 );
 
                 const sparkCount = Rocket.SPARK_COUNT;
@@ -1668,10 +2179,28 @@
                     fragmentShader: FIREWORK_FS,
                     transparent: true,
                     blending: THREE.AdditiveBlending,
-                    depthWrite: false
+                    depthWrite: false,
+                    depthTest: false
                 });
                 this.sparks = new THREE.Points(sparkGeo, this.sparkMaterial);
+                this.sparks.renderOrder = 1001;
                 sceneRef.add(this.sparks);
+
+                this.headMaterial = new THREE.SpriteMaterial({
+                    map: getGlowTexture(),
+                    color: c,
+                    transparent: true,
+                    opacity: 0.95,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    depthTest: false
+                });
+                this.head = new THREE.Sprite(this.headMaterial);
+                this.head.position.copy(this.position);
+                this.head.userData.baseScale = profile.isPortrait ? 1.35 : 1.05;
+                this.head.scale.setScalar(this.head.userData.baseScale);
+                this.head.renderOrder = 1002;
+                sceneRef.add(this.head);
 
                 this.trailIdx = 0;
                 this.trailBuf = new Float32Array(Rocket.TRAIL_LEN * 3);
@@ -1683,7 +2212,7 @@
                     this.trailColBuf[i * 3] = c.r;
                     this.trailColBuf[i * 3 + 1] = c.g;
                     this.trailColBuf[i * 3 + 2] = c.b;
-                    this.trailSizBuf[i] = 0.5 + (i / Rocket.TRAIL_LEN) * 0.3;
+                    this.trailSizBuf[i] = (0.7 + (i / Rocket.TRAIL_LEN) * 0.45) * profile.trailScale;
                 }
 
                 this.trailGeometry = new THREE.BufferGeometry();
@@ -1702,14 +2231,20 @@
                     fragmentShader: FIREWORK_FS,
                     transparent: true,
                     blending: THREE.AdditiveBlending,
-                    depthWrite: false
+                    depthWrite: false,
+                    depthTest: false
                 });
                 this.trail = new THREE.Points(this.trailGeometry, this.trailMaterial);
+                this.trail.renderOrder = 1000;
                 sceneRef.add(this.trail);
             }
 
             update(dt) {
                 this.position.addScaledVector(this.velocity, dt);
+
+                this.head.position.copy(this.position);
+                const headPulse = this.head.userData.baseScale * (0.92 + Math.sin(clock.elapsedTime * 28) * 0.08);
+                this.head.scale.setScalar(headPulse);
 
                 this.sparkMaterial.uniforms.uTime.value += dt;
                 this.trailMaterial.uniforms.uTime.value += dt;
@@ -1730,11 +2265,11 @@
                 this.trailBuf[idx * 3] = this.position.x + THREE.MathUtils.randFloatSpread(0.1);
                 this.trailBuf[idx * 3 + 1] = this.position.y;
                 this.trailBuf[idx * 3 + 2] = this.position.z + THREE.MathUtils.randFloatSpread(0.1);
-                this.trailAlpBuf[idx] = 0.8;
+                this.trailAlpBuf[idx] = 1.0;
                 this.trailIdx++;
 
                 for (let i = 0; i < Rocket.TRAIL_LEN; i++) {
-                    this.trailAlpBuf[i] = Math.max(0, this.trailAlpBuf[i] - dt * 1.5);
+                    this.trailAlpBuf[i] = Math.max(0, this.trailAlpBuf[i] - dt * 1.0);
                 }
 
                 this.trailGeometry.attributes.position.needsUpdate = true;
@@ -1745,10 +2280,12 @@
             dispose(sceneRef) {
                 sceneRef.remove(this.sparks);
                 sceneRef.remove(this.trail);
+                sceneRef.remove(this.head);
                 this.sparks.geometry.dispose();
                 this.sparkMaterial.dispose();
                 this.trailGeometry.dispose();
                 this.trailMaterial.dispose();
+                this.headMaterial.dispose();
             }
         }
 
@@ -1764,15 +2301,20 @@
             }
 
             update(dt, currentTime, isActive) {
-                if (isActive && this.explosions.length < CONFIG.firework.maxExplosions) {
+                const profile = getFireworkViewportProfile();
+                const activeFireworkCount = this.explosions.length + this.rockets.length;
+                const canAddFirework = activeFireworkCount < profile.maxExplosions
+                    && this.rockets.length < profile.maxRockets;
+
+                if (isActive && canAddFirework) {
                     if (currentTime >= this.nextComboTime) {
-                        const isCombo = Math.random() < 0.35;
+                        const isCombo = Math.random() < profile.comboChance;
                         if (isCombo) {
-                            this.launchCombo();
+                            this.launchCombo(profile);
                         } else {
-                            this.launchRocket();
+                            this.launchRocket(profile);
                         }
-                        const interval = THREE.MathUtils.randInt(CONFIG.firework.launchIntervalMin, CONFIG.firework.launchIntervalMax);
+                        const interval = THREE.MathUtils.randInt(profile.intervalMin, profile.intervalMax);
                         this.nextComboTime = currentTime + interval;
                     }
                 }
@@ -1806,18 +2348,60 @@
                 });
             }
 
-            launchRocket() {
-                const x = THREE.MathUtils.randFloatSpread(CONFIG.firework.launchXRange * 2);
-                const startPos = new THREE.Vector3(x, -15, THREE.MathUtils.randFloatSpread(10));
-                const targetHeight = THREE.MathUtils.randFloat(CONFIG.firework.targetHeightMin, CONFIG.firework.targetHeightMax);
-                const color = CONFIG.firework.colors[Math.floor(Math.random() * CONFIG.firework.colors.length)];
-                const type = CONFIG.firework.types[Math.floor(Math.random() * CONFIG.firework.types.length)];
-                this.rockets.push(new Rocket(startPos, targetHeight, color, type, this.sceneRef));
+            addRocket(x, targetHeight, color, type, profile, z = null) {
+                if (this.rockets.length >= profile.maxRockets) return;
+                if (this.explosions.length + this.rockets.length >= profile.maxExplosions) return;
+
+                const clampedX = THREE.MathUtils.clamp(x, -profile.launchHalfWidth, profile.launchHalfWidth);
+                const depth = z ?? THREE.MathUtils.randFloatSpread(profile.launchDepth * 2);
+                const startPos = new THREE.Vector3(clampedX, profile.startY, depth);
+                const clampedTarget = THREE.MathUtils.clamp(
+                    targetHeight,
+                    profile.targetMinY,
+                    profile.targetMaxY
+                );
+                this.rockets.push(new Rocket(
+                    startPos,
+                    clampedTarget,
+                    color,
+                    type,
+                    this.sceneRef,
+                    profile
+                ));
             }
 
-            launchCombo() {
+            launchRocket(profile = getFireworkViewportProfile()) {
+                const x = THREE.MathUtils.randFloatSpread(profile.launchHalfWidth * 2);
+                const targetHeight = THREE.MathUtils.randFloat(profile.targetMinY, profile.targetMaxY);
+                const color = CONFIG.firework.colors[Math.floor(Math.random() * CONFIG.firework.colors.length)];
+                const type = CONFIG.firework.types[Math.floor(Math.random() * CONFIG.firework.types.length)];
+                this.addRocket(x, targetHeight, color, type, profile);
+            }
+
+            launchCombo(profile = getFireworkViewportProfile()) {
                 const palette = CONFIG.firework.colors;
                 const types = CONFIG.firework.types;
+
+                if (profile.isPortrait) {
+                    const count = THREE.MathUtils.randInt(2, 3);
+                    const centerX = THREE.MathUtils.randFloatSpread(profile.launchHalfWidth * 0.7);
+                    const spacing = Math.max(1.3, profile.launchHalfWidth * 0.32);
+
+                    for (let i = 0; i < count; i++) {
+                        const x = centerX + (i - (count - 1) / 2) * spacing;
+                        const heightProgress = count === 1 ? 0.5 : i / (count - 1);
+                        const targetHeight = THREE.MathUtils.lerp(
+                            profile.targetMinY,
+                            profile.targetMaxY,
+                            0.25 + heightProgress * 0.6
+                        );
+                        const color = palette[Math.floor(Math.random() * palette.length)];
+                        const type = types[Math.floor(Math.random() * types.length)];
+                        this.addRocket(x, targetHeight, color, type, profile);
+                    }
+                    return;
+                }
+
                 const comboType = Math.floor(Math.random() * 4);
 
                 switch (comboType) {
@@ -1826,11 +2410,10 @@
                         const centerX = THREE.MathUtils.randFloatSpread(12);
                         for (let i = 0; i < count; i++) {
                             const x = centerX + (i - (count - 1) / 2) * THREE.MathUtils.randFloat(2, 4);
-                            const startPos = new THREE.Vector3(x, -15, THREE.MathUtils.randFloatSpread(5));
                             const targetHeight = THREE.MathUtils.randFloat(10, 18);
                             const color = palette[Math.floor(Math.random() * palette.length)];
                             const type = types[Math.floor(Math.random() * types.length)];
-                            this.rockets.push(new Rocket(startPos, targetHeight, color, type, this.sceneRef));
+                            this.addRocket(x, targetHeight, color, type, profile);
                         }
                         break;
                     }
@@ -1839,15 +2422,13 @@
                         const color2 = palette[Math.floor(Math.random() * palette.length)];
                         for (let i = 0; i < 3; i++) {
                             const x = THREE.MathUtils.randFloatSpread(16);
-                            const startPos = new THREE.Vector3(x, -15, THREE.MathUtils.randFloatSpread(5));
                             const targetHeight = THREE.MathUtils.randFloat(10, 16);
-                            this.rockets.push(new Rocket(startPos, targetHeight, color1, 'WILLOW', this.sceneRef));
+                            this.addRocket(x, targetHeight, color1, 'WILLOW', profile);
                         }
                         for (let i = 0; i < 2; i++) {
                             const x = THREE.MathUtils.randFloatSpread(16);
-                            const startPos = new THREE.Vector3(x, -15, THREE.MathUtils.randFloatSpread(5));
                             const targetHeight = THREE.MathUtils.randFloat(14, 20);
-                            this.rockets.push(new Rocket(startPos, targetHeight, color2, 'PEONY', this.sceneRef));
+                            this.addRocket(x, targetHeight, color2, 'PEONY', profile);
                         }
                         break;
                     }
@@ -1856,8 +2437,7 @@
                         const heights = [8, 14, 20];
                         for (let i = 0; i < 3; i++) {
                             const x = THREE.MathUtils.randFloatSpread(8);
-                            const startPos = new THREE.Vector3(x, -15, THREE.MathUtils.randFloatSpread(3));
-                            this.rockets.push(new Rocket(startPos, heights[i], sharedColor, 'CHRYSANTHEMUM', this.sceneRef));
+                            this.addRocket(x, heights[i], sharedColor, 'CHRYSANTHEMUM', profile);
                         }
                         break;
                     }
@@ -1865,11 +2445,12 @@
                         for (let i = 0; i < 4; i++) {
                             const angle = (i / 4) * Math.PI * 2;
                             const radius = THREE.MathUtils.randFloat(5, 10);
-                            const startPos = new THREE.Vector3(Math.cos(angle) * radius, -15, Math.sin(angle) * radius);
+                            const x = Math.cos(angle) * radius;
+                            const z = Math.sin(angle) * radius;
                             const targetHeight = THREE.MathUtils.randFloat(12, 20);
                             const color = palette[Math.floor(Math.random() * palette.length)];
                             const type = types[Math.floor(Math.random() * types.length)];
-                            this.rockets.push(new Rocket(startPos, targetHeight, color, type, this.sceneRef));
+                            this.addRocket(x, targetHeight, color, type, profile, z);
                         }
                         break;
                     }
@@ -1877,8 +2458,16 @@
             }
 
             createExplosion(rocket) {
-                this.explosions.push(new Explosion(rocket.position, rocket.color, rocket.type, this.sceneRef));
-                if (this.residues.length >= FIREWORK_RESIDUE_MAX) {
+                this.explosions.push(new Explosion(
+                    rocket.position,
+                    rocket.color,
+                    rocket.type,
+                    this.sceneRef,
+                    false,
+                    rocket.profile
+                ));
+                const residueLimit = rocket.profile.isPortrait ? 6 : FIREWORK_RESIDUE_MAX;
+                if (this.residues.length >= residueLimit) {
                     const oldest = this.residues.shift();
                     oldest.dispose(this.sceneRef);
                 }
@@ -1967,8 +2556,15 @@
                 this.prevMode = mode;
 
                 if (entered) {
-                    this.fireworkPulseDone = false;
-                    this.visState = this.themeVisible ? 'VISIBLE' : 'HIDDEN';
+                    const shouldHide = !this.isDust;
+                    this.fireworkPulseDone = shouldHide;
+                    if (!this.themeVisible) {
+                        this.visState = 'HIDDEN';
+                    } else if (shouldHide) {
+                        this.visState = 'FADING_OUT';
+                    } else {
+                        this.visState = 'VISIBLE';
+                    }
                     this.mesh.visible = this.themeVisible;
                 }
                 if (exited) {
@@ -1978,7 +2574,8 @@
                 }
 
                 const _v3 = _pv3;
-                const fadeLerp = Math.min(1, 8 * dt);
+                const fadeSpeed = mode === 'FIREWORK' && !this.isDust ? 14 : 8;
+                const fadeLerp = Math.min(1, fadeSpeed * dt);
 
                 // 主题切换：被隐藏的粒子缩没后驻留 HIDDEN；被显示的粒子缩现
                 if (!this.themeVisible) {
@@ -1992,6 +2589,7 @@
                     return;
                 }
                 if (this.themeVisible && this.visState === 'HIDDEN') {
+                    if (mode === 'FIREWORK' && !this.isDust) return;
                     this.mesh.visible = true;
                     this.visState = 'FADING_IN';
                 }
@@ -2013,8 +2611,6 @@
                         let pulseScale = this.baseScale;
                         if (this.isDust) {
                             pulseScale = this.baseScale * (0.8 + 0.4 * Math.sin(clock.elapsedTime * 4 + this.mesh.id));
-                        } else if (this.type === 'PHOTO') {
-                            pulseScale = this.baseScale * 2.5;
                         }
                         const s = THREE.MathUtils.lerp(pulseScale, this.baseScale * FIREWORK_PULSE_MIN_SCALE, eased);
                         this.mesh.scale.lerp(_v3.set(s, s, s), Math.min(1, dt / 0.18));
@@ -2022,11 +2618,7 @@
                     }
 
                     this.fireworkPulseDone = true;
-                    if (this.type === 'PHOTO') {
-                        this.visState = 'FADING_OUT';
-                    } else {
-                        this.visState = 'VISIBLE';
-                    }
+                    this.visState = 'VISIBLE';
                 }
 
                 if (this.visState === 'FADING_OUT') {
@@ -2049,7 +2641,9 @@
                     return;
                 }
 
-                let target = this.posScatter;
+                let target = mode === 'FIREWORK'
+                    ? _v3.copy(this.posScatter).multiplyScalar(FIREWORK_BACKDROP_POSITION_SCALE)
+                    : this.posScatter;
 
                 if (mode === 'FOCUS') {
                     if (this.mesh === focusTargetMesh) {
@@ -2062,7 +2656,7 @@
                 const lerpSpeed = (mode === 'FOCUS' && this.mesh === focusTargetMesh) ? 5.0 : 2.0;
                 this.mesh.position.lerp(target, lerpSpeed * dt);
 
-                if (mode === 'SCATTER' || (mode === 'FIREWORK' && this.type !== 'PHOTO')) {
+                if (mode === 'SCATTER' || (mode === 'FIREWORK' && this.isDust)) {
                     const spinScale = mode === 'FIREWORK' ? FIREWORK_BACKDROP_SPIN : 1.0;
                     this.mesh.rotation.x += this.spinSpeed.x * dt * spinScale;
                     this.mesh.rotation.y += this.spinSpeed.y * dt * spinScale;
@@ -2074,9 +2668,9 @@
                 }
 
                 let s = this.baseScale;
-                if (mode === 'FIREWORK' && this.type !== 'PHOTO') {
+                if (mode === 'FIREWORK' && this.isDust) {
                     const breath = 0.86 + 0.14 * Math.sin(clock.elapsedTime * 1.6 + this.mesh.id);
-                    s = this.baseScale * (this.isDust ? FIREWORK_DUST_SCALE : FIREWORK_BACKDROP_SCALE) * breath;
+                    s = this.baseScale * FIREWORK_DUST_SCALE * breath;
                 } else if (this.isDust) {
                     s = this.baseScale * (0.8 + 0.4 * Math.sin(clock.elapsedTime * 4 + this.mesh.id));
                 } else if (mode === 'SCATTER' && this.type === 'PHOTO') {
@@ -2088,6 +2682,22 @@
 
                 const lerpAlpha = Math.min(1, dt / 0.2);
                 this.mesh.scale.lerp(_v3.set(s, s, s), lerpAlpha);
+
+                // 生日点缀：蛋糕火焰摇曳 / 星星呼吸闪烁
+                if (this.type === 'CAKE') {
+                    if (!this._flameMesh) {
+                        this._flameMesh = this.mesh.children.find(c => c.userData.isCakeFlame) || null;
+                    }
+                    if (this._flameMesh) {
+                        const t = clock.elapsedTime;
+                        const flick = 0.82 + 0.26 * Math.sin(t * 11 + this.mesh.id * 1.7) * Math.sin(t * 5.3 + this.mesh.id);
+                        this._flameMesh.scale.set(1, flick, 1);
+                        this._flameMesh.position.y = 0.52 + 0.014 * Math.sin(t * 13 + this.mesh.id);
+                    }
+                } else if (this.type === 'STAR' && this.mesh.material && this.mesh.material.emissive) {
+                    const t = clock.elapsedTime;
+                    this.mesh.material.emissiveIntensity = 0.10 + 0.30 * (0.5 + 0.5 * Math.sin(t * 2.2 + this.mesh.id * 2.1));
+                }
             }
         }
 
@@ -2118,14 +2728,112 @@
 
         let currentGreetingTheme = 'birthday';
 
-        // 按祝福语主题切换粒子显隐：common 常驻，christmas/birthday 各自专属
+        // 粒子显隐 + UI/场景/烟花/彩屑全套主题联动
         // 只改 themeVisible，实际缩放淡入淡出由 Particle.update 驱动
-        function applyGreetingTheme(theme) {
+        function applyGreetingTheme(theme, options = {}) {
+            const { burst = true } = options;
             currentGreetingTheme = theme;
             particleSystem.forEach(p => {
                 if (p.type === 'PHOTO' || p.isDust) return;
                 p.themeVisible = (p.theme === 'common') || (p.theme === theme);
             });
+
+            // 1) UI 配色：body data-theme 驱动 CSS 变量（标题渐变/按钮/背景）
+            document.body.dataset.theme = theme;
+
+            // 2) 场景背景与雾色目标（animate 中平滑过渡）
+            themeSceneTarget.copy(THEME_VISUALS[theme].sceneColor);
+
+            // 3) common 粒子材质换色目标由 updateThemeTransitions 读取 currentGreetingTheme
+
+            // 4) 烟花调色板：生日切马卡龙金粉色系
+            const palette = THEME_VISUALS[theme].firework;
+            CONFIG.firework.colors.length = 0;
+            CONFIG.firework.colors.push(...palette);
+
+            // 5) 雪花 ↔ 彩屑：先淡出再换装
+            requestSnowMode(theme === 'birthday' ? 'confetti' : 'snow');
+
+            // 6) 转场彩屑爆开（初始加载不触发）
+            if (burst) spawnThemeBurst(theme);
+        }
+
+        function requestSnowMode(mode) {
+            if (!snowSystem) { snowMode = mode; return; } // 系统未建好时仅记录
+            if (mode !== snowMode && mode !== snowPendingMode) snowPendingMode = mode;
+        }
+
+        // 主题切换转场：相机前方一片彩屑爆开，颜色跟随新主题
+        function spawnThemeBurst(theme) {
+            const colors = THEME_VISUALS[theme].burst;
+            const geo = new THREE.PlaneGeometry(0.22, 0.34);
+            const mats = colors.map(c => new THREE.MeshBasicMaterial({
+                color: c, transparent: true, opacity: 1,
+                side: THREE.DoubleSide, toneMapped: false
+            }));
+            const meshes = [];
+            for (let i = 0; i < 90; i++) {
+                const mesh = new THREE.Mesh(geo, mats[i % mats.length]);
+                mesh.position.set(
+                    (Math.random() - 0.5) * 8,
+                    5 + (Math.random() - 0.5) * 5,
+                    34 + (Math.random() - 0.5) * 5
+                );
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 5 + Math.random() * 9;
+                mesh.userData.vel = new THREE.Vector3(
+                    Math.cos(angle) * speed,
+                    4 + Math.random() * 8,
+                    Math.sin(angle) * speed * 0.4
+                );
+                mesh.userData.spin = new THREE.Vector3(
+                    (Math.random() - 0.5) * 12,
+                    (Math.random() - 0.5) * 12,
+                    (Math.random() - 0.5) * 12
+                );
+                scene.add(mesh);
+                meshes.push(mesh);
+            }
+            themeBurst = { meshes, mats, geo, age: 0, life: 2.4 };
+        }
+
+        function updateThemeBurst(dt) {
+            if (!themeBurst) return;
+            themeBurst.age += dt;
+            const { meshes, mats, age, life } = themeBurst;
+            const fadeStart = life * 0.55;
+            if (age > fadeStart) {
+                const o = Math.max(0, 1 - (age - fadeStart) / (life - fadeStart));
+                mats.forEach(m => { m.opacity = o; });
+            }
+            for (const m of meshes) {
+                m.userData.vel.y -= 5.5 * dt;                              // 重力
+                m.userData.vel.multiplyScalar(1 - Math.min(1, 1.1 * dt)); // 空气阻力
+                m.position.addScaledVector(m.userData.vel, dt);
+                m.rotation.x += m.userData.spin.x * dt;
+                m.rotation.y += m.userData.spin.y * dt;
+                m.rotation.z += m.userData.spin.z * dt;
+            }
+            if (age >= life) {
+                meshes.forEach(m => scene.remove(m));
+                mats.forEach(m => m.dispose());
+                themeBurst.geo.dispose();
+                themeBurst = null;
+            }
+        }
+
+        // 每帧主题过渡：场景背景/雾色 + common 粒子材质颜色
+        function updateThemeTransitions(dt) {
+            const k = Math.min(1, 1.8 * dt);
+            scene.background.lerp(themeSceneTarget, k);
+            scene.fog.color.lerp(themeSceneTarget, k);
+            if (themeMats) {
+                const target = THEME_VISUALS[currentGreetingTheme].mats;
+                themeMats.greenMat.color.lerp(target.greenMat.color, k);
+                themeMats.greenMat.emissive.lerp(target.greenMat.emissive, k);
+                themeMats.redMat.color.lerp(target.redMat.color, k);
+                themeMats.redMat.emissive.lerp(target.redMat.emissive, k);
+            }
         }
 
         // 复用几何：多个生日粒子共享，避免重复创建
@@ -2152,13 +2860,13 @@
         }
 
         // 生日特色粒子：程序化构造，风格贴合现有装饰粒子
-        // 内部比例 —— 气球 45% / 彩带礼盒 30% / 星星 20% / 蛋糕 5%
+        // 内部比例 —— 气球 40% / 彩带礼盒 28% / 星星 22% / 蛋糕 10%
         function buildBirthdayMesh(ctx) {
-            const { sphereGeo, boxGeo, goldMat, pickBirthdayMat, flameMat } = ctx;
+            const { sphereGeo, boxGeo, goldMat, pickBirthdayMat, flameMat, balloonStringMat } = ctx;
             const r = Math.random();
 
-            if (r < 0.45) {
-                // 🎈 气球：水滴形（球体 + 底部锥尖），同色更像气球
+            if (r < 0.40) {
+                // 🎈 气球：水滴形（球体 + 底部锥尖）+ 下垂线绳，同色更像气球
                 const mat = pickBirthdayMat();
                 const group = new THREE.Group();
                 const body = new THREE.Mesh(sphereGeo, mat);
@@ -2167,11 +2875,14 @@
                 const tip = new THREE.Mesh(tipGeo, mat);
                 tip.position.y = -0.32;
                 tip.rotation.x = Math.PI;
-                group.add(body, tip);
+                const stringGeo = birthdayGeo('balloonString', () => new THREE.CylinderGeometry(0.012, 0.012, 0.62, 6));
+                const str = new THREE.Mesh(stringGeo, balloonStringMat);
+                str.position.y = -0.82; // 从锥尖下垂（尖底在 -0.5）
+                group.add(body, tip, str);
                 return { mesh: group, type: 'BALLOON' };
             }
 
-            if (r < 0.75) {
+            if (r < 0.68) {
                 // 🎁 彩带礼盒：礼盒 + 十字缎带（加粗、金色对比）+ 顶部蝴蝶结
                 const group = new THREE.Group();
                 const box = new THREE.Mesh(boxGeo, pickBirthdayMat());
@@ -2186,9 +2897,9 @@
                 return { mesh: group, type: 'GIFT_RIBBON' };
             }
 
-            if (r < 0.95) {
-                // ⭐ 星星：真实五角星
-                const star = new THREE.Mesh(birthdayGeo('star', makeStarGeometry), pickBirthdayMat());
+            if (r < 0.90) {
+                // ⭐ 星星：真实五角星，独立克隆材质以便逐颗呼吸闪烁
+                const star = new THREE.Mesh(birthdayGeo('star', makeStarGeometry), pickBirthdayMat().clone());
                 return { mesh: star, type: 'STAR' };
             }
 
@@ -2206,6 +2917,7 @@
             const flameGeo = birthdayGeo('flame', () => new THREE.SphereGeometry(0.06, 8, 8));
             const flame = new THREE.Mesh(flameGeo, flameMat);
             flame.position.y = 0.52;
+            flame.userData.isCakeFlame = true; // 供 Particle.update 做摇曳动画
             group.add(tier1, tier2, candle, flame);
             return { mesh: group, type: 'CAKE' };
         }
@@ -2251,17 +2963,21 @@
                 emissive: color, emissiveIntensity: 0.12
             }));
             const flameMat = new THREE.MeshBasicMaterial({ color: 0xffcf6b, toneMapped: false });
+            const balloonStringMat = new THREE.MeshBasicMaterial({ color: 0xfff2cf });
             const pickBirthdayMat = () => birthdayMats[Math.floor(Math.random() * birthdayMats.length)];
 
             const birthdayCtx = {
-                sphereGeo, boxGeo, goldMat, pickBirthdayMat, flameMat
+                sphereGeo, boxGeo, goldMat, pickBirthdayMat, flameMat, balloonStringMat
             };
+
+            // common 粒子共享材质：主题切换时由 updateThemeTransitions 平滑换色
+            themeMats = { greenMat, redMat };
 
             for (let i = 0; i < CONFIG.particles.count; i++) {
                 let mesh, type, theme;
 
-                // 生日特色粒子约占 12%，其余走通用/圣诞装饰（总数不变，密度一致）
-                if (Math.random() < 0.12) {
+                // 生日特色粒子约占 24%，其余走通用/圣诞装饰（总数不变，密度一致）
+                if (Math.random() < 0.24) {
                     ({ mesh, type } = buildBirthdayMesh(birthdayCtx));
                     theme = 'birthday';
                 } else {
@@ -2307,8 +3023,8 @@
 
             mainGroup.add(photoMeshGroup);
 
-            // 初始即生日形态，与默认标题 "Happy Birthday" 对齐
-            applyGreetingTheme('birthday');
+            // 初始即生日形态，与默认标题 "Happy Birthday" 对齐（不触发转场彩屑）
+            applyGreetingTheme('birthday', { burst: false });
         }
 
         function createDust() {
@@ -2504,7 +3220,7 @@
             count.textContent = `Total Photos: ${visiblePhotos.length}`;
             
             if (visiblePhotos.length === 0) {
-                grid.innerHTML = '<div style="color: rgba(255, 69, 0, 0.5); text-align: center; padding: 40px; grid-column: 1/-1;">No photos available</div>';
+                grid.innerHTML = '<div style="color: rgba(var(--accent-rgb), 0.5); text-align: center; padding: 40px; grid-column: 1/-1;">No photos available</div>';
             } else {
                 visiblePhotos.forEach(photoData => {
                     const item = document.createElement('div');
@@ -2550,7 +3266,7 @@
                             count.textContent = `Total Photos: ${newVisiblePhotos.length}`;
                             
                             if (newVisiblePhotos.length === 0) {
-                                grid.innerHTML = '<div style="color: rgba(255, 69, 0, 0.5); text-align: center; padding: 40px; grid-column: 1/-1;">No photos available</div>';
+                                grid.innerHTML = '<div style="color: rgba(var(--accent-rgb), 0.5); text-align: center; padding: 40px; grid-column: 1/-1;">No photos available</div>';
                             }
                         }
                     });
@@ -2599,9 +3315,14 @@
                 revealControlsTemporarily();
             });
 
-            controls.addEventListener('pointerenter', revealControlsTemporarily);
             controls.addEventListener('focusin', revealControlsTemporarily);
-            controls.addEventListener('pointerleave', scheduleControlsAutoHide);
+
+            if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+                controls.addEventListener('pointerenter', revealControlsTemporarily);
+                controls.addEventListener('pointerleave', scheduleControlsAutoHide);
+            } else {
+                controls.addEventListener('pointerdown', revealControlsTemporarily);
+            }
 
             scheduleControlsAutoHide();
         }
@@ -2784,12 +3505,14 @@
         }
 // wp/electronicminer wish you a Merry Christmas!
         function setupEvents() {
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-                composer.setSize(window.innerWidth, window.innerHeight);
-            });
+            window.addEventListener('resize', scheduleViewportResize, { passive: true });
+            window.visualViewport?.addEventListener('resize', scheduleViewportResize, { passive: true });
+
+            const canvasContainer = document.getElementById('canvas-container');
+            if ('ResizeObserver' in window && canvasContainer) {
+                viewportResizeObserver = new ResizeObserver(scheduleViewportResize);
+                viewportResizeObserver.observe(canvasContainer);
+            }
             
             document.getElementById('file-input').addEventListener('change', handleImageUpload);
             document.getElementById('folder-input').addEventListener('change', handleImageUpload);
@@ -2878,7 +3601,9 @@
                 STATE.candidateTarget = null;
             }
 
-            updateSnow();
+            updateThemeTransitions(dt);
+            updateSnow(dt, isFireworkMode);
+            updateThemeBurst(dt);
             const canLaunchFireworks = isFireworkMode && fireworkPulseElapsed >= FIREWORK_LAUNCH_DELAY;
             fireworkSystem.update(dt, currentTime, canLaunchFireworks);
 
